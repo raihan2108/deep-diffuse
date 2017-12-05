@@ -1,15 +1,20 @@
+__author__ = 'Raihan'
+__email__ = 'raihan2108@gmail.com'
+
+
+
 import numpy as np
 import tensorflow as tf
 
 
 class VanillaRNN(object):
 
-    def __init__(self, input_size, hidden_state_size, target_size, vocab_size, lr):
+    def __init__(self, input_size, hidden_state_size, target_size, vertex_size, lr):
 
         self.input_size = input_size
         self.state_size = hidden_state_size
         self.target_size = target_size
-        self.vocab_size = vocab_size
+        self.vocab_size = vertex_size
         self.model_init = tf.contrib.layers.xavier_initializer
         self.learning_rate =lr
         #
