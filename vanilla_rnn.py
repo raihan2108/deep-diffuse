@@ -71,8 +71,8 @@ class VanillaRNN(object):
             init_state = np.zeros((self.batch_size, self.state_size))
             for b in range(0, data_iterator.num_batches):
                 x, y = data_iterator.next_batch_inf()
-                if sum(x) == 0 or sum(y) == 0:
-                    continue
+                '''if sum(x) == 0 or sum(y) == 0:
+                    continue'''
                 rnn_args = {self.xs_: x, self.ys_: y, self.init_state: init_state}
                 summ, _, train_cost, last_state = sess.run([summaries, self.optimizer, self.cost, self.last_state], feed_dict=rnn_args)
 
@@ -80,7 +80,7 @@ class VanillaRNN(object):
                 if ((e * data_iterator.num_batches + b) % 1000 == 0) or \
                         ((e == self.batch_size-1) and (b == data_iterator.num_batches - 1)):
                     checkpoint_path = join('saved_model', 'model.ckpt')
-                    saver.saver(sess, checkpoint_path, global_step=e * data_iterator.num_batches + b)
+                    saver.save(sess, checkpoint_path, global_step=e * data_iterator.num_batches + b)
                     print('model saved to %s' % checkpoint_path)
 
                 print('[%d/%d] epoch: %d, batch: %d, train loss: %.4f' % (e * data_iterator.num_batches + b, n_epochs * data_iterator.num_batches

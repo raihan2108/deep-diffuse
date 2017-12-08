@@ -40,16 +40,16 @@ class DataLoader():
         self.timestamps = data[:, :, 1]
         self.size = data.shape
 
-        '''self.train_infection, self.test_infection, self.train_timestamp, self.test_timestamp = \
+        self.train_infection, self.test_infection, self.train_timestamp, self.test_timestamp = \
             train_test_split(infections, timestamps, test_size=0.25, random_state=42)
         # self.train_data = np.stack([train_timestamp.T, train_infection.T]).T
 
         self.size = self.train_infection.shape
         self.length = [len(item) for item in self.train_infection]
-        print(self.size)'''
+        print(self.size)
 
     def create_batches(self):
-        self.train_data = np.stack([self.timestamps.T, self.infections.T]).T
+        self.train_data = np.stack([self.train_timestamp.T, self.train_infection.T]).T
         self.num_batches = (self.size[0] * self.size[1]) // (self.batch_size * self.seq_len)
 
         self.inf_tensor = self.infections.ravel()[: self.num_batches * self.batch_size * self.seq_len]
@@ -70,11 +70,18 @@ class DataLoader():
         self.x_batches_time = np.split(x_time_data.reshape(self.batch_size, -1), self.num_batches, 1)
         self.y_batches_time = np.split(y_time_data.reshape(self.batch_size, -1), self.num_batches, 1)
 
+        np.save('saved_model/test_infection.npy', self.test_infection)
+        np.save('saved_model/test_timestamp.npy', self.test_timestamp)
+
+        del self.test_timestamp
+        del self.test_infection
+        del self.train_infection
+        del self.train_timestamp
+
     def next_batch_inf(self):
         x, y = self.x_batches_inf[self.pointer], self.y_batches_inf[self.pointer]
         self.pointer += 1
         return x, y
-
 
     def next_batch_time(self):
         x, y = self.x_batches_time[self.pointer], self.y_batches_time[self.pointer]
