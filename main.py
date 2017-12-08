@@ -17,6 +17,7 @@ data_dir = 'data'
 batch_size = 100
 epochs = 30
 state_size = 128
+seq_len = 100
 
 with open(join(data_dir, 'digg.pkl'), 'rb') as read_file:
     friend_id, reverse_friend_id, friend_network, cascade_set = pickle.load(read_file)
@@ -44,11 +45,11 @@ print(train_data.shape)
 data_iterator = dt.PaddedDataIterator(train_data, 0, MARK=True, DIFF=True)'''
 
 node_size = len(friend_id)
-dl = DataLoader(join(data_dir, 'digg.pkl'), batch_size=batch_size, seq_len=100, T=0, DIFF=True, MARK=True)
+dl = DataLoader(join(data_dir, 'digg.pkl'), batch_size=batch_size, seq_len=seq_len, T=0, DIFF=True, MARK=True)
 dl.create_batches()
 tf.reset_default_graph()
 with tf.Session() as sess:
-    v_rnn = VanillaRNN(100, state_size, 40, lr=0.1, vertex_size=node_size, batch_size=batch_size)
+    v_rnn = VanillaRNN(100, state_size, 40, lr=0.1, vertex_size=node_size, batch_size=batch_size, seq_len=seq_len)
     v_rnn.init_variable()
     v_rnn.build_graph()
     tf.global_variables_initializer().run(session=sess)
