@@ -1,92 +1,197 @@
 import pickle
-import random
 import numpy as np
+import configparser
 import pandas as pd
-from sklearn.model_selection import train_test_split
+import networkx as nx
+from os.path import join, isfile
 
 
-class DataLoader():
+def process_timestamps(timestamps):
+    arr = np.asarray(timestamps)
+    return list(np.diff(arr))
 
-    def __init__(self, data_file, batch_size, seq_len, T, DIFF, MARK):
-        self.data_path = data_file
-        self.MARK = MARK
-        self.DIFF = DIFF
-        self.epochs = 0
-        self.batch_size = batch_size
-        self.seq_len = seq_len
-        self.T = T
-        self.reset_batch_pointer()
-        # self.shuffle()
 
-        with open(data_file, 'rb') as read_file:
-            friend_id, reverse_friend_id, friend_network, cascade_set = pickle.load(read_file)
-        infections = []
-        timestamps = []
+def load_graph(data_path):
+    node_file = join(data_path, 'seen_nodes.txt')
+    with open(node_file, 'r') as f:
+        seen_nodes = [int(x.strip()) for x in f]
 
-        for c in cascade_set:
-            t_node = cascade_set[c]['node']
-            t_time = cascade_set[c]['time']
+    # builds node index
+    node_index = {v: i for i, v in enumerate(seen_nodes)}
 
-            infections.append(t_node)
-            timestamps.append(t_time)
+    # loads graph
+    '''graph_file = join(data_path, 'graph.txt')
+    pkl_file = join(data_path, 'graph.pkl')
 
-        infections = pd.DataFrame(infections).fillna(0).as_matrix()
-        timestamps = pd.DataFrame(timestamps).fillna(0).as_matrix()
+    if isfile(pkl_file):
+        G = pickle.load(open(pkl_file, 'rb'))
+    else:
+        G = nx.Graph()
+        G.name = data_path
+        n_nodes = len(node_index)
+        G.add_nodes_from(range(n_nodes))
+        with open(graph_file, 'r') as f:
+            next(f)
+            for line in f:
+                u, v = map(int, line.strip().split())
+                if (u in node_index) and (v in node_index):
+                    u = node_index[u]
+                    v = node_index[v]
+                    G.add_edge(u, v)
+        pickle.dump(G, open(pkl_file, 'wb+'))'''
 
-        data = np.stack([infections.T, timestamps.T]).T
-        random.shuffle(data)
+    return node_index
 
-        self.infections = data[:, :, 0]
-        self.timestamps = data[:, :, 1]
-        self.size = data.shape
 
-        self.train_infection, self.test_infection, self.train_timestamp, self.test_timestamp = \
-            train_test_split(infections, timestamps, test_size=0.25, random_state=42)
-        # self.train_data = np.stack([train_timestamp.T, train_infection.T]).T
+def load_instances(data_path, file_type, node_index, seq_len, limit, ratio=1.0, testing=False):
+    pkl_path = join(data_path, file_type + '.pkl')
+    if isfile(pkl_path):
+        instances = pickle.load(open(pkl_path, 'rb'))
+    else:
+        file_name = join(data_path, file_type + '.txt')
+        instances = []
+        with open(file_name, 'r') as read_file:
+            for i, line in enumerate(read_file):
+                query, cascade = line.strip().split(' ', 1)
+                cascade_nodes = list(map(int, cascade.split(' ')[::2]))
+                cascade_times = list(map(float, cascade.split(' ')[1::2]))
+                if seq_len is not None:
+                    cascade_nodes = cascade_nodes[:seq_len+1]
+                    cascade_times = cascade_times[:seq_len+2]
+                    cascade_times = process_timestamps(cascade_times)
+                    assert len(cascade_nodes) == len(cascade_times)
+                cascade_nodes = [node_index[x] for x in cascade_nodes]
+                ins = process_cascade(cascade_nodes, cascade_times, testing)
+                instances.extend(ins)
+                if limit is not None and i == limit:
+                    break
+        pickle.dump(instances, open(pkl_path, 'wb+'))
+    total_samples = len(instances)
+    indices = np.random.choice(total_samples, int(
+        total_samples * ratio), replace=False)
+    sampled_instances = [instances[i] for i in indices]
+    return sampled_instances
 
-        self.size = self.train_infection.shape
-        self.length = [len(item) for item in self.train_infection]
-        print(self.size)
 
-    def create_batches(self):
-        self.train_data = np.stack([self.train_timestamp.T, self.train_infection.T]).T
-        self.num_batches = (self.size[0] * self.size[1]) // (self.batch_size * self.seq_len)
+def process_cascade(cascade, timestamps, testing=False):
+    size = len(cascade)
+    examples = []
+    for i, node in enumerate(cascade):
+        if i == size - 1 and not testing:
+            return examples
+        if i < size - 1 and testing:
+            continue
+        prefix_c = cascade[: i + 1]
+        prefix_t = timestamps[: i + 1]
+        # predecessors = set(network[node]) & set(prefix_c)
+        # others = set(prefix_c).difference(set(predecessors))
 
-        self.inf_tensor = self.infections.ravel()[: self.num_batches * self.batch_size * self.seq_len]
-        self.time_tensor = self.timestamps.ravel()[: self.num_batches * self.batch_size * self.seq_len]
+        '''if i == 0:
+            times.extend([0.0])
+        else:
+            # print(i)
+            times.extend([(timestamps[i-1] - timestamps[i])])'''
 
-        x_inf_data = self.inf_tensor
-        y_inf_data = np.copy(self.inf_tensor)
-        y_inf_data[:-1] = x_inf_data[1:]
-        y_inf_data[-1] = x_inf_data[0]
+        if not testing:
+            label_n = cascade[i+1]
+            label_t = timestamps[i+1]
+        else:
+            label_n = None
+            label_t = None
 
-        x_time_data = self.time_tensor
-        y_time_data = np.copy(self.time_tensor)
-        y_time_data[:-1] = x_time_data[1:]
-        y_time_data[-1] = x_time_data[0]
+        example = {'sequence': prefix_c, 'time': prefix_t,
+                   'label_n': label_n, 'label_t': label_t}
 
-        self.x_batches_inf = np.split(x_inf_data.reshape(self.batch_size, -1), self.num_batches, 1)
-        self.y_batches_inf = np.split(y_inf_data.reshape(self.batch_size, -1), self.num_batches, 1)
-        self.x_batches_time = np.split(x_time_data.reshape(self.batch_size, -1), self.num_batches, 1)
-        self.y_batches_time = np.split(y_time_data.reshape(self.batch_size, -1), self.num_batches, 1)
+        if not testing:
+            examples.append(example)
+        else:
+            return example
 
-        np.save('saved_model/test_infection.npy', self.test_infection)
-        np.save('saved_model/test_timestamp.npy', self.test_timestamp)
 
-        del self.test_timestamp
-        del self.test_infection
-        del self.train_infection
-        del self.train_timestamp
+def load_params(param_file='params.ini'):
+    options = {}
+    config = configparser.ConfigParser()
+    config.read(param_file)
+    options['data_dir'] = config['general']['data_dir']
+    options['dataset_name'] = config['general']['dataset_name']
+    options['batch_size'] = int(config['general']['batch_size'])
+    options['seq_len'] = int(config['general']['seq_len'])
+    options['cell_type'] = str(config['general']['cell_type'])
+    options['epochs'] = int(config['general']['epochs'])
+    options['learning_rate'] = float(config['general']['learning_rate'])
+    options['state_size'] = int(config['general']['state_size'])
+    options['shuffle'] = bool(config['general']['shuffle'])
+    options['embedding_size'] = int(config['general']['embedding_size'])
+    options['test_freq'] = int(config['general']['test_freq'])
+    options['disp_freq'] = int(config['general']['disp_freq'])
 
-    def next_batch_inf(self):
-        x, y = self.x_batches_inf[self.pointer], self.y_batches_inf[self.pointer]
-        self.pointer += 1
-        return x, y
+    return options
 
-    def next_batch_time(self):
-        x, y = self.x_batches_time[self.pointer], self.y_batches_time[self.pointer]
-        self.pointer += 1
-        return x, y
 
-    def reset_batch_pointer(self):
-        self.pointer = 0
+def prepare_minibatch(tuples, inference=False, options=None):
+    '''
+    produces a mini-batch of data in format required by model.
+    '''
+    seqs = [t['sequence'] for t in tuples]
+    lengths = list(map(len, seqs))
+    n_timesteps = max(lengths)
+    n_samples = len(tuples)
+
+    # prepare sequences data
+    seqs_matrix = np.zeros((n_timesteps, n_samples)).astype('int32')
+    for i, seq in enumerate(seqs):
+        seqs_matrix[: lengths[i], i] = seq
+    seqs_matrix = np.transpose(seqs_matrix)
+    # prepare topo-masks data
+    '''topo_masks = [t['topo_mask'] for t in tuples]
+    topo_masks_tensor = np.zeros(
+        (n_timesteps, n_samples, n_timesteps)).astype(np.float)
+    for i, topo_mask in enumerate(topo_masks):
+        topo_masks_tensor[: lengths[i], i, : lengths[i]] = topo_mask'''
+
+    # prepare sequence masks
+    seq_masks_matrix = np.zeros((n_timesteps, n_samples)).astype(np.float)
+    for i, length in enumerate(lengths):
+        seq_masks_matrix[: length, i] = 1.
+    seq_masks_matrix = np.transpose(seq_masks_matrix)
+
+    # prepare labels data
+    if not inference:
+        labels = [t['label_n'] for t in tuples]
+        labels_vector = np.array(labels).astype('int32')
+    else:
+        labels_vector = None
+
+    return (seqs_matrix,
+            seq_masks_matrix,
+            labels_vector)
+
+
+class Loader:
+    def __init__(self, data, options=None):
+        self.batch_size = options['batch_size']
+        self.idx = 0
+        self.data = data
+        self.shuffle = True
+        self.n = len(data)
+        self.n_words = options['node_size']
+        self.indices = np.arange(self.n, dtype="int32")
+        self.options = options
+
+    def __len__(self):
+        return len(self.data) // self.batch_size + 1
+
+    def __call__(self):
+        if self.shuffle and self.idx == 0:
+            np.random.shuffle(self.indices)
+
+        batch_indices = self.indices[self.idx: self.idx + self.batch_size]
+        batch_examples = [self.data[i] for i in batch_indices]
+
+        self.idx += self.batch_size
+        if self.idx >= self.n:
+            self.idx = 0
+
+        return prepare_minibatch(batch_examples,
+                                 inference=False,
+                                 options=self.options)

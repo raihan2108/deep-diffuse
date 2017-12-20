@@ -1,56 +1,33 @@
-__author__ = 'Raihan'
-__email__ = 'raihan2108@gmail.com'
-
-import pickle
 import numpy as np
-import pandas as pd
-import tensorflow as tf
+import networkx as nx
 from os.path import join
-from sklearn.model_selection import train_test_split
 
-import data_iterator as dt
-from utils import DataLoader
-from vanilla_rnn import VanillaRNN
+import utils
+# from basic_model import VanillaRNN
+# from vanilla_rnn import VanillaRNN
+from rnn_model import RNNModel
 
+if __name__ == '__main__':
+    options = utils.load_params()
+    data_path = join(options['data_dir'], options['dataset_name'])
+    # utils.write_seen_nodes(join(options['data_dir'], options['dataset_name']), 30)
+    node_index = utils.load_graph(data_path)
+    options['node_size'] = len(node_index)
+    # print(nx.info(G))
+    train_instances = utils.load_instances(data_path, 'train', node_index, options['seq_len'], limit=100)
+    test_instances = utils.load_instances(data_path, 'test', node_index, options['seq_len'], limit=10)
+    print(len(train_instances), len(test_instances))
 
-data_dir = 'data'
-batch_size = 50
-epochs = 10
-state_size = 128
-seq_len = 50
+    '''train_dt = utils.DataIterator(train_instances, options)
+    # new_batch = train_dt.next_batch()
+    test_dt = utils.DataIterator(test_instances, options)'''
 
-with open(join(data_dir, 'digg.pkl'), 'rb') as read_file:
-    friend_id, reverse_friend_id, friend_network, cascade_set = pickle.load(read_file)
+    '''v_rnn = VanillaRNN(options['state_size'], options['node_size'], options['batch_size'], options['seq_len'],
+                       options['learning_rate'])
+    v_rnn.run_model(train_dt, test_dt, options)'''
+    train_loader = utils.Loader(train_instances, options)
+    test_loader = utils.Loader(test_instances, options)
 
-'''infections = []
-timestamps = []
-
-for c in cascade_set:
-    t_node = cascade_set[c]['node']
-    t_time = cascade_set[c]['time']
-
-    infections.append(t_node)
-    timestamps.append(t_time)
-
-infections = pd.DataFrame(infections).fillna(0).as_matrix()
-timestamps = pd.DataFrame(timestamps).fillna(0).as_matrix()
-print(infections.shape)
-node_size = len(friend_id)
-# print(node_size, friend_network.number_of_nodes())
-
-train_infection, test_infection, train_timestamp, test_timestamp = \
-    train_test_split(infections, timestamps, test_size=0.25, random_state=42)
-train_data = np.stack([train_timestamp.T, train_infection.T]).T
-print(train_data.shape)
-data_iterator = dt.PaddedDataIterator(train_data, 0, MARK=True, DIFF=True)'''
-
-node_size = len(friend_id)
-dl = DataLoader(join(data_dir, 'digg.pkl'), batch_size=batch_size, seq_len=seq_len, T=0, DIFF=True, MARK=True)
-dl.create_batches()
-tf.reset_default_graph()
-with tf.Session() as sess:
-    v_rnn = VanillaRNN(100, state_size, 40, lr=0.1, vertex_size=node_size, batch_size=batch_size, seq_len=seq_len)
-    v_rnn.init_variable()
-    v_rnn.build_graph()
-    tf.global_variables_initializer().run(session=sess)
-    v_rnn.train(sess=sess, data_iterator=dl, n_epochs=epochs)
+    rnn_ins = RNNModel(options['state_size'], options['node_size'], options['batch_size'], options['seq_len'],
+                       options['learning_rate'])
+    rnn_ins.run_model(train_loader, test_loader, options)

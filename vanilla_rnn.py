@@ -10,11 +10,11 @@ from os.path import join
 
 class VanillaRNN(object):
 
-    def __init__(self, input_size, hidden_state_size, target_size, vertex_size, batch_size, seq_len, lr):
+    def __init__(self, hidden_state_size, vertex_size, batch_size, seq_len, lr):
 
-        self.input_size = input_size
+        # self.input_size = input_size
         self.state_size = hidden_state_size
-        self.target_size = target_size
+        # self.target_size = target_size
         self.vocab_size = vertex_size
         self.model_init = tf.contrib.layers.xavier_initializer
         self.learning_rate =lr
@@ -32,9 +32,9 @@ class VanillaRNN(object):
 
         return h
 
-    def init_variable(self):
+    def init_variables(self):
         self.xs_ = tf.placeholder(shape=[None, None], dtype=tf.int32)
-        self.ys_ = tf.placeholder(shape=[None, None], dtype=tf.int32)
+        self.ys_ = tf.placeholder(shape=[None], dtype=tf.int32)
 
         self.emb = tf.get_variable('emb', [self.vocab_size, self.state_size])
         self.rnn_inputs = tf.nn.embedding_lookup(self.emb, self.xs_)
@@ -48,7 +48,7 @@ class VanillaRNN(object):
 
         state_reshaped = tf.reshape(states, [-1, self.state_size])
         self.logits = tf.matmul(state_reshaped, self.Vo) + self.bo
-        self.predictions = tf.nn.softmax(self.logits)
+        self.probs = tf.nn.softmax(self.logits)
 
         self.loss = tf.nn.sparse_softmax_cross_entropy_with_logits(logits=self.logits, labels=tf.reshape(self.ys_, [-1]))
         # self.loss = tf.reduce_mean(loss)
@@ -58,6 +58,48 @@ class VanillaRNN(object):
         tf.summary.histogram('logits', self.logits)
         tf.summary.histogram('loss', self.loss)
         tf.summary.scalar('cost', self.cost)
+
+    def run_model(self, train_dt, test_dt, options):
+        tf.reset_default_graph()
+        self.init_variables()
+        self.build_graph()
+
+        with tf.Session() as sess:
+            tf.global_variables_initializer().run(session=sess)
+            for e in range(options['epochs']):
+                global_cost = 0.
+                global_time_cost = 0.
+                global_node_cost = 0.
+                for _ in range(train_dt.num_batches):
+                    next_batch = train_dt.next_batch()
+                    sequences, timestamps, len_mask, node_labels, time_labels = next_batch
+                    if sequences.shape[0] < self.batch_size:
+                        print('skipping epoch %d batch length %d' % (e, sequences.shape[0]))
+                        continue
+
+                    '''rnn_args = {self.input_nodes: sequences,
+                                self.input_time: timestamps,
+                                self.seq_len_mask: len_mask,
+                                self.label_nodes: node_labels,
+                                self.label_time: time_labels}'''
+                    init_state = np.zeros((self.batch_size, self.state_size))
+                    rnn_args = {self.xs_: sequences,
+                                self.ys_: node_labels,
+                                self.init_state: init_state
+                    }
+                    _, cost, node_loss = sess.run([self.optimizer, self.cost, self.loss],
+                             feed_dict=rnn_args)
+
+                    global_cost += cost
+                    global_node_cost += node_loss
+                    # global_time_cost += time_loss
+
+                '''if e != 0 and e % options['test_freq'] == 0:
+                    score = self.evaluate_model(sess, test_dt)'''
+                    # print(score)
+                if e != 0 and e % options['disp_freq'] == 0:
+                    print('total cost %.4f, time loss %.4f, node loss %.4f' %
+                          (global_cost, global_time_cost, global_node_cost))
 
     def train(self, sess, data_iterator, n_epochs):
         total_loss = 0.0
