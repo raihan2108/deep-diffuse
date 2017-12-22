@@ -65,7 +65,7 @@ def load_instances(data_path, file_type, node_index, seq_len, limit, ratio=1.0, 
                 instances.extend(ins)
                 if limit is not None and i == limit:
                     break
-        pickle.dump(instances, open(pkl_path, 'wb+'))
+        # pickle.dump(instances, open(pkl_path, 'wb+'))
     total_samples = len(instances)
     indices = np.random.choice(total_samples, int(
         total_samples * ratio), replace=False)

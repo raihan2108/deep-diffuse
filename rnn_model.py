@@ -4,7 +4,7 @@ import metrics
 
 
 class RNNModel:
-    def __init__(self, state_size, vertex_size, batch_size, seq_len, learning_rate, loss_type='mse', use_att=True):
+    def __init__(self, state_size, vertex_size, batch_size, seq_len, learning_rate, loss_type='mse', use_att=False):
         self.batch_size = batch_size
         self.seq_len = seq_len
         self.state_size = state_size
@@ -12,6 +12,7 @@ class RNNModel:
         self.vertex_size = vertex_size
         self.loss_type = loss_type
         self.loss_trade_off = 0.01
+        self.use_att = False
         if use_att:
             self.use_att = True
             self.attention_size = self.seq_len
@@ -24,7 +25,7 @@ class RNNModel:
         self.emb = tf.get_variable('emb', initializer=tf.truncated_normal(shape=[self.vertex_size, self.state_size]))
 
         self.rnn_inputs_nodes = tf.nn.embedding_lookup(self.emb, tf.cast(self.input_nodes, dtype=tf.int32))
-        self.rnn_inputs_times = tf.reshape(self.input_times, shape=[self.batch_size, -1, 1])
+        self.rnn_inputs_times = tf.expand_dims(self.input_times, axis=-1)
         self.comb_rnn_inputs = tf.concat([self.rnn_inputs_nodes, self.rnn_inputs_times], axis=2)
 
         self.Vn = tf.get_variable('Vn', initializer=tf.truncated_normal(shape=[self.state_size, self.vertex_size]))
@@ -108,6 +109,8 @@ class RNNModel:
                 for b in range(num_batches):
                     one_batch = train_it()
                     seq, time, seq_mask, label_n, label_t = one_batch
+                    if seq.shape[0] < self.batch_size:
+                        continue
                     rnn_args = {
                         self.input_nodes: seq,
                         self.input_times: time,
@@ -115,10 +118,14 @@ class RNNModel:
                         self.output_node: label_n,
                         self.init_state: init_state
                     }
+                    # print(seq.shape, time.shape, label_n.shape, label_t.shape)
                     _, cost, node_cost, time_cost, last_state = \
                         sess.run([self.optimizer, self.cost, self.node_cost, self.time_cost, self.last_state],
                                  feed_dict=rnn_args)
-                    # print(last_state.shape, probs.shape)
+                    '''_, last_state, time_hat = \
+                        sess.run([self.optimizer, self.last_state, self.time_hat],
+                                 feed_dict=rnn_args)
+                    print(last_state.shape, time_hat.shape)'''
                     global_cost += cost
                     global_node_cost += node_cost
                     global_time_cost += time_cost
