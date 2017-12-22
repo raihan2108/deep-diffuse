@@ -3,7 +3,7 @@ import tensorflow as tf
 import metrics
 
 
-class RNNModel:
+class LSTMModel:
     def __init__(self, state_size, vertex_size, batch_size, seq_len, learning_rate, loss_type='mse'):
         self.batch_size = batch_size
         self.seq_len = seq_len
@@ -24,6 +24,9 @@ class RNNModel:
         self.rnn_inputs_times = tf.reshape(self.input_times, shape=[self.batch_size, -1, 1])
         self.comb_rnn_inputs = tf.concat([self.rnn_inputs_nodes, self.rnn_inputs_times], axis=2)
 
+        self.W = tf.get_variable('W', shape=[4, self.state_size, self.state_size], initializer=tf.orthogonal_initializer)
+        self.U = tf.get_variable('U', shape=[4, self.comb_rnn_inputs.shape[-1], self.state_size], initializer=tf.orthogonal_initializer)
+
         self.Vn = tf.get_variable('Vn', initializer=tf.truncated_normal(shape=[self.state_size, self.vertex_size]))
         self.bn = tf.get_variable('bn', shape=[self.vertex_size], initializer=tf.constant_initializer(0.0))
 
@@ -31,19 +34,26 @@ class RNNModel:
         self.bt = tf.get_variable('bt', shape=[1], initializer=tf.constant_initializer(0.0))
 
     def step(self, h_prev, x):
-        W = tf.get_variable('W', shape=[self.state_size, self.state_size], initializer=tf.orthogonal_initializer())
-        U = tf.get_variable('U', shape=[x.shape[-1], self.state_size], initializer=tf.orthogonal_initializer())
-        b = tf.get_variable('b', shape=[self.state_size], initializer=tf.constant_initializer(0.0))
-        h = tf.tanh(tf.matmul(h_prev, W) + tf.matmul(x, U) + b)
-        return h
+        st_1, ct_1 = tf.unstack(h_prev)
+        i = tf.sigmoid(tf.matmul(x, self.U[0]) + tf.matmul(st_1, self.W[0]))
+        f = tf.sigmoid(tf.matmul(x, self.U[1]) + tf.matmul(st_1, self.W[1]))
+        o = tf.sigmoid(tf.matmul(x, self.U[2]) + tf.matmul(st_1, self.W[2]))
+        g = tf.tanh(tf.matmul(x, self.U[3]) + tf.matmul(st_1, self.W[3]))
+
+        ct = ct_1 * f + g * i
+        st = tf.tanh(ct) * o
+        return tf.stack([st, ct])
 
     def build_graph(self):
-        self.init_state = tf.placeholder(shape=[None, self.state_size], dtype=tf.float32, name='initial_state')
-        self.states = tf.scan(fn=self.step, elems=tf.transpose(self.comb_rnn_inputs, [1, 0, 2]),
+        self.init_state = tf.placeholder(shape=[2, None, self.state_size], dtype=tf.float32, name='initial_state')
+        states = tf.scan(fn=self.step, elems=tf.transpose(self.comb_rnn_inputs, [1, 0, 2]),
                          initializer=self.init_state)
-        self.last_state = self.states[-1]
-
-        self.cost = self.calc_node_loss() # + self.loss_trade_off * self.calc_time_loss(self.output_time)
+        self.states = tf.transpose(states, [1, 2, 0, 3])[0]
+        self.last_state = self.states[:, -1, :]
+        '''self.time_cost = tf.constant(0.0)
+        self.node_cost = tf.constant(0.0)
+        self.cost = self.time_cost + self.node_cost'''
+        self.cost = self.calc_node_loss() + self.loss_trade_off * self.calc_time_loss(self.output_time)
         self.optimizer = tf.train.AdamOptimizer(learning_rate=self.learning_rate).minimize(self.cost)
 
     def calc_node_loss(self):
@@ -68,7 +78,8 @@ class RNNModel:
             return - self._loglik
         el'''
         if self.loss_type == "mse":
-            time_hat = tf.matmul(self.last_state, self.Vt) + self.bt
+            state_reshaped = tf.reshape(self.last_state, [-1, self.state_size])
+            time_hat = tf.matmul(state_reshaped, self.Vt) + self.bt
             self.time_loss = tf.abs(tf.reshape(time_hat, [-1]) - current_time)
         self.time_cost = tf.reduce_mean(self.time_loss)
         return self.time_cost
@@ -84,7 +95,7 @@ class RNNModel:
                 global_cost = 0.
                 global_time_cost = 0.
                 global_node_cost = 0.
-                init_state = np.zeros((self.batch_size, self.state_size))
+                init_state = np.zeros((2, self.batch_size, self.state_size))
                 for b in range(num_batches):
                     one_batch = train_it()
                     seq, time, seq_mask, label_n, label_t = one_batch
@@ -106,10 +117,10 @@ class RNNModel:
                 print('[%d/%d] epoch: %d, batch: %d, train loss: %.4f, node loss: %.4f, time loss: %.4f' % (
                 e * num_batches + b, options['epochs'] * num_batches, e + 1, b + 1, global_cost, global_node_cost,
                 global_time_cost))
-                scores = self.evaluate_model(sess, test_it, last_state)
+                scores = self.evaluate_model(sess, test_it)
                 print(scores)
 
-    def evaluate_model(self, sess, test_it, last_state):
+    def evaluate_model(self, sess, test_it):
         test_batch_size = len(test_it)
         y = None
         y_prob = None
@@ -119,7 +130,7 @@ class RNNModel:
             y_ = label_n
             rnn_args = {self.input_nodes: seq,
                         self.input_times: time,
-                        self.init_state: last_state}
+                        self.init_state: np.zeros((2, self.batch_size, self.state_size))}
             y_prob_ = sess.run([self.probs], feed_dict=rnn_args)
 
             y_prob_ = y_prob_[0]

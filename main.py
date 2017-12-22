@@ -6,6 +6,7 @@ import utils
 # from basic_model import VanillaRNN
 # from vanilla_rnn import VanillaRNN
 from rnn_model import RNNModel
+from lstm_model import LSTMModel
 
 if __name__ == '__main__':
     options = utils.load_params()
@@ -28,6 +29,9 @@ if __name__ == '__main__':
     train_loader = utils.Loader(train_instances, options)
     test_loader = utils.Loader(test_instances, options)
 
-    rnn_ins = RNNModel(options['state_size'], options['node_size'], options['batch_size'], options['seq_len'],
+    '''rnn_ins = RNNModel(options['state_size'], options['node_size'], options['batch_size'], options['seq_len'],
                        options['learning_rate'])
-    rnn_ins.run_model(train_loader, test_loader, options)
+    rnn_ins.run_model(train_loader, test_loader, options)'''
+    lstm_ins = LSTMModel(options['state_size'], options['node_size'], options['batch_size'], options['seq_len'],
+                       options['learning_rate'])
+    lstm_ins.run_model(train_loader, test_loader, options)

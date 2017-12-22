@@ -133,6 +133,7 @@ def prepare_minibatch(tuples, inference=False, options=None):
     produces a mini-batch of data in format required by model.
     '''
     seqs = [t['sequence'] for t in tuples]
+    times = [t['time'] for t in tuples]
     lengths = list(map(len, seqs))
     n_timesteps = max(lengths)
     n_samples = len(tuples)
@@ -142,6 +143,11 @@ def prepare_minibatch(tuples, inference=False, options=None):
     for i, seq in enumerate(seqs):
         seqs_matrix[: lengths[i], i] = seq
     seqs_matrix = np.transpose(seqs_matrix)
+
+    times_matrix = np.zeros((n_timesteps, n_samples)).astype('int32')
+    for i, time in enumerate(times):
+        times_matrix[: lengths[i], i] = time
+    times_matrix = np.transpose(times_matrix) 
     # prepare topo-masks data
     '''topo_masks = [t['topo_mask'] for t in tuples]
     topo_masks_tensor = np.zeros(
@@ -150,21 +156,25 @@ def prepare_minibatch(tuples, inference=False, options=None):
         topo_masks_tensor[: lengths[i], i, : lengths[i]] = topo_mask'''
 
     # prepare sequence masks
-    seq_masks_matrix = np.zeros((n_timesteps, n_samples)).astype(np.float)
+    len_masks_matrix = np.zeros((n_timesteps, n_samples)).astype(np.float)
     for i, length in enumerate(lengths):
-        seq_masks_matrix[: length, i] = 1.
-    seq_masks_matrix = np.transpose(seq_masks_matrix)
+        len_masks_matrix[: length, i] = 1.
+    len_masks_matrix = np.transpose(len_masks_matrix)
 
     # prepare labels data
     if not inference:
-        labels = [t['label_n'] for t in tuples]
-        labels_vector = np.array(labels).astype('int32')
+        labels_n = [t['label_n'] for t in tuples]
+        labels_t = [t['label_t'] for t in tuples]
+        labels_vector_n = np.array(labels_n).astype('int32')
+        labels_vector_t = np.array(labels_t).astype('int32')
     else:
-        labels_vector = None
+        labels_vector_t = None
+        labels_vector_n = None
 
     return (seqs_matrix,
-            seq_masks_matrix,
-            labels_vector)
+            times_matrix,
+            len_masks_matrix,
+            labels_vector_n, labels_vector_t)
 
 
 class Loader:
