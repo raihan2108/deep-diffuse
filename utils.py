@@ -124,6 +124,8 @@ def load_params(param_file='params.ini'):
     options['embedding_size'] = int(config['general']['embedding_size'])
     options['test_freq'] = int(config['general']['test_freq'])
     options['disp_freq'] = int(config['general']['disp_freq'])
+    options['use_attention'] = config.getboolean('general', 'use_attention')
+    options['time_loss'] = str(config['general']['time_loss'])
 
     return options
 

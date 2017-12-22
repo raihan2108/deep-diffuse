@@ -4,7 +4,7 @@ import metrics
 
 
 class LSTMModel:
-    def __init__(self, state_size, vertex_size, batch_size, seq_len, learning_rate, loss_type='mse'):
+    def __init__(self, state_size, vertex_size, batch_size, seq_len, learning_rate, loss_type='mse', use_att=False):
         self.batch_size = batch_size
         self.seq_len = seq_len
         self.state_size = state_size
@@ -12,6 +12,10 @@ class LSTMModel:
         self.vertex_size = vertex_size
         self.loss_type = loss_type
         self.loss_trade_off = 0.01
+        self.use_att = False
+        if use_att:
+            self.use_att = True
+            self.attention_size = self.seq_len
 
     def init_variables(self):
         self.input_nodes = tf.placeholder(shape=[None, None], dtype=tf.float32)
@@ -33,6 +37,11 @@ class LSTMModel:
         self.Vt = tf.get_variable('Vt', initializer=tf.truncated_normal(shape=[self.state_size, 1]))
         self.bt = tf.get_variable('bt', shape=[1], initializer=tf.constant_initializer(0.0))
 
+        if self.use_att:
+            self.W_omega = tf.Variable(tf.random_normal([self.state_size, self.attention_size], stddev=0.1))
+            self.b_omega = tf.Variable(tf.random_normal([self.attention_size], stddev=0.1))
+            self.u_omega = tf.Variable(tf.random_normal([self.attention_size], stddev=0.1))
+
     def step(self, h_prev, x):
         st_1, ct_1 = tf.unstack(h_prev)
         i = tf.sigmoid(tf.matmul(x, self.U[0]) + tf.matmul(st_1, self.W[0]))
@@ -44,12 +53,22 @@ class LSTMModel:
         st = tf.tanh(ct) * o
         return tf.stack([st, ct])
 
+    def attention(self, states):
+        v = tf.tanh(tf.tensordot(states, self.W_omega, axes=[[2], [0]]) + self.b_omega)
+        vu = tf.tensordot(v, self.u_omega, axes=1)
+        alphas = tf.nn.softmax(vu)
+        output = tf.reduce_sum(states * tf.expand_dims(alphas, -1), 1)
+        return output
+
     def build_graph(self):
         self.init_state = tf.placeholder(shape=[2, None, self.state_size], dtype=tf.float32, name='initial_state')
         states = tf.scan(fn=self.step, elems=tf.transpose(self.comb_rnn_inputs, [1, 0, 2]),
                          initializer=self.init_state)
         self.states = tf.transpose(states, [1, 2, 0, 3])[0]
-        self.last_state = self.states[:, -1, :]
+        if self.use_att:
+            self.last_state = self.attention(self.states)
+        else:
+            self.last_state = self.states[:, -1, :]
         '''self.time_cost = tf.constant(0.0)
         self.node_cost = tf.constant(0.0)
         self.cost = self.time_cost + self.node_cost'''
@@ -109,7 +128,9 @@ class LSTMModel:
                     _, cost, node_cost, time_cost, last_state = \
                         sess.run([self.optimizer, self.cost, self.node_cost, self.time_cost, self.last_state],
                                  feed_dict=rnn_args)
-                    # print(last_state.shape, probs.shape)
+                    '''_ , cost, node_cost, time_cost, states = sess.run([self.optimizer,
+                    self.cost, self.node_cost, self.time_cost, self.states], feed_dict=rnn_args)
+                    print(states.shape)'''
                     global_cost += cost
                     global_node_cost += node_cost
                     global_time_cost += time_cost

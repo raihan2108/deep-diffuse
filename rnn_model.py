@@ -4,7 +4,7 @@ import metrics
 
 
 class RNNModel:
-    def __init__(self, state_size, vertex_size, batch_size, seq_len, learning_rate, loss_type='mse'):
+    def __init__(self, state_size, vertex_size, batch_size, seq_len, learning_rate, loss_type='mse', use_att=True):
         self.batch_size = batch_size
         self.seq_len = seq_len
         self.state_size = state_size
@@ -12,6 +12,9 @@ class RNNModel:
         self.vertex_size = vertex_size
         self.loss_type = loss_type
         self.loss_trade_off = 0.01
+        if use_att:
+            self.use_att = True
+            self.attention_size = self.seq_len
 
     def init_variables(self):
         self.input_nodes = tf.placeholder(shape=[None, None], dtype=tf.float32)
@@ -30,6 +33,11 @@ class RNNModel:
         self.Vt = tf.get_variable('Vt', initializer=tf.truncated_normal(shape=[self.state_size, 1]))
         self.bt = tf.get_variable('bt', shape=[1], initializer=tf.constant_initializer(0.0))
 
+        if self.use_att:
+            self.W_omega = tf.Variable(tf.random_normal([self.state_size, self.attention_size], stddev=0.1))
+            self.b_omega = tf.Variable(tf.random_normal([self.attention_size], stddev=0.1))
+            self.u_omega = tf.Variable(tf.random_normal([self.attention_size], stddev=0.1))
+
     def step(self, h_prev, x):
         W = tf.get_variable('W', shape=[self.state_size, self.state_size], initializer=tf.orthogonal_initializer())
         U = tf.get_variable('U', shape=[x.shape[-1], self.state_size], initializer=tf.orthogonal_initializer())
@@ -37,13 +45,24 @@ class RNNModel:
         h = tf.tanh(tf.matmul(h_prev, W) + tf.matmul(x, U) + b)
         return h
 
+    def attention(self, states):
+        v = tf.tanh(tf.tensordot(states, self.W_omega, axes=[[2], [0]]) + self.b_omega)
+        vu = tf.tensordot(v, self.u_omega, axes=1)
+        alphas = tf.nn.softmax(vu)
+        output = tf.reduce_sum(states * tf.expand_dims(alphas, -1), 1)
+        return output
+
     def build_graph(self):
         self.init_state = tf.placeholder(shape=[None, self.state_size], dtype=tf.float32, name='initial_state')
-        self.states = tf.scan(fn=self.step, elems=tf.transpose(self.comb_rnn_inputs, [1, 0, 2]),
+        states = tf.scan(fn=self.step, elems=tf.transpose(self.comb_rnn_inputs, [1, 0, 2]),
                          initializer=self.init_state)
-        self.last_state = self.states[-1]
+        self.states = tf.transpose(states, [1, 0, 2])
+        if self.use_att:
+            self.last_state = self.attention(self.states)
+        else:
+            self.last_state = self.states[:, -1, :]
 
-        self.cost = self.calc_node_loss() # + self.loss_trade_off * self.calc_time_loss(self.output_time)
+        self.cost = self.calc_node_loss() + self.loss_trade_off * self.calc_time_loss(self.output_time)
         self.optimizer = tf.train.AdamOptimizer(learning_rate=self.learning_rate).minimize(self.cost)
 
     def calc_node_loss(self):
@@ -68,7 +87,8 @@ class RNNModel:
             return - self._loglik
         el'''
         if self.loss_type == "mse":
-            time_hat = tf.matmul(self.last_state, self.Vt) + self.bt
+            state_reshaped = tf.reshape(self.last_state, [-1, self.state_size])
+            time_hat = tf.matmul(state_reshaped, self.Vt) + self.bt
             self.time_loss = tf.abs(tf.reshape(time_hat, [-1]) - current_time)
         self.time_cost = tf.reduce_mean(self.time_loss)
         return self.time_cost

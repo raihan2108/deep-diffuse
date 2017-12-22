@@ -22,16 +22,17 @@ if __name__ == '__main__':
     '''train_dt = utils.DataIterator(train_instances, options)
     # new_batch = train_dt.next_batch()
     test_dt = utils.DataIterator(test_instances, options)'''
-
-    '''v_rnn = VanillaRNN(options['state_size'], options['node_size'], options['batch_size'], options['seq_len'],
-                       options['learning_rate'])
-    v_rnn.run_model(train_dt, test_dt, options)'''
     train_loader = utils.Loader(train_instances, options)
     test_loader = utils.Loader(test_instances, options)
-
-    '''rnn_ins = RNNModel(options['state_size'], options['node_size'], options['batch_size'], options['seq_len'],
-                       options['learning_rate'])
-    rnn_ins.run_model(train_loader, test_loader, options)'''
-    lstm_ins = LSTMModel(options['state_size'], options['node_size'], options['batch_size'], options['seq_len'],
-                       options['learning_rate'])
-    lstm_ins.run_model(train_loader, test_loader, options)
+    if options['cell_type'] == 'rnn':
+        print('running rnn model')
+        print('using attention:' + str(options['use_attention']))
+        rnn_ins = RNNModel(options['state_size'], options['node_size'], options['batch_size'], options['seq_len'],
+                           options['learning_rate'], loss_type=options['time_loss'], use_att=options['use_attention'])
+        rnn_ins.run_model(train_loader, test_loader, options)
+    elif options['cell_type'] == 'lstm':
+        print('running lstm model')
+        print('using attention:' + str(options['use_attention']))
+        lstm_ins = LSTMModel(options['state_size'], options['node_size'], options['batch_size'], options['seq_len'],
+                           options['learning_rate'], loss_type=options['time_loss'], use_att=options['use_attention'])
+        lstm_ins.run_model(train_loader, test_loader, options)
