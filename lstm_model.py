@@ -141,7 +141,7 @@ class LSTMModel:
                     global_time_cost))
 
                 if e != 0 and e % options['test_freq'] == 0:
-                    scores = self.evaluate_model(sess, test_it, last_state)
+                    scores = self.evaluate_model(sess, test_it)
                     print(scores)
 
     def evaluate_model(self, sess, test_it):
