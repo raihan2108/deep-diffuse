@@ -135,11 +135,14 @@ class LSTMModel:
                     global_node_cost += node_cost
                     global_time_cost += time_cost
 
-                print('[%d/%d] epoch: %d, batch: %d, train loss: %.4f, node loss: %.4f, time loss: %.4f' % (
-                e * num_batches + b, options['epochs'] * num_batches, e + 1, b + 1, global_cost, global_node_cost,
-                global_time_cost))
-                scores = self.evaluate_model(sess, test_it)
-                print(scores)
+                if e != 0 and e % options['disp_freq'] == 0:
+                    print('[%d/%d] epoch: %d, batch: %d, train loss: %.4f, node loss: %.4f, time loss: %.4f' % (
+                    e * num_batches + b, options['epochs'] * num_batches, e + 1, b + 1, global_cost, global_node_cost,
+                    global_time_cost))
+
+                if e != 0 and e % options['test_freq'] == 0:
+                    scores = self.evaluate_model(sess, test_it, last_state)
+                    print(scores)
 
     def evaluate_model(self, sess, test_it):
         test_batch_size = len(test_it)
