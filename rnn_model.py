@@ -146,6 +146,8 @@ class RNNModel:
         for i in range(0, test_batch_size):
             test_batch = test_it()
             seq, time, seq_mask, label_n, label_t = test_batch
+            if seq.shape[0] < self.batch_size:
+                continue
             y_ = label_n
             rnn_args = {self.input_nodes: seq,
                         self.input_times: time,

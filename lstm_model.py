@@ -25,7 +25,7 @@ class LSTMModel:
         self.emb = tf.get_variable('emb', initializer=tf.truncated_normal(shape=[self.vertex_size, self.state_size]))
 
         self.rnn_inputs_nodes = tf.nn.embedding_lookup(self.emb, tf.cast(self.input_nodes, dtype=tf.int32))
-        self.rnn_inputs_times = tf.reshape(self.input_times, shape=[self.batch_size, -1, 1])
+        self.rnn_inputs_times = tf.expand_dims(self.input_times, axis=-1)
         self.comb_rnn_inputs = tf.concat([self.rnn_inputs_nodes, self.rnn_inputs_times], axis=2)
 
         self.W = tf.get_variable('W', shape=[4, self.state_size, self.state_size], initializer=tf.orthogonal_initializer)
@@ -118,6 +118,8 @@ class LSTMModel:
                 for b in range(num_batches):
                     one_batch = train_it()
                     seq, time, seq_mask, label_n, label_t = one_batch
+                    if seq.shape[0] < self.batch_size:
+                        continue
                     rnn_args = {
                         self.input_nodes: seq,
                         self.input_times: time,
@@ -151,6 +153,8 @@ class LSTMModel:
         for i in range(0, test_batch_size):
             test_batch = test_it()
             seq, time, seq_mask, label_n, label_t = test_batch
+            if seq.shape[0] < self.batch_size:
+                continue
             y_ = label_n
             rnn_args = {self.input_nodes: seq,
                         self.input_times: time,
