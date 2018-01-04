@@ -27,7 +27,7 @@ def loglikelihood(mean_arr, sampled_arr, sigma):
   return logll
 
 
-class AttentionModel:
+class GlimpseAttentionModel:
     def __init__(self, options, use_att):
         self.batch_size = options['batch_size']
         self.seq_len = options['seq_len']
