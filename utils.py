@@ -116,16 +116,23 @@ def load_params(param_file='params.ini'):
     options['dataset_name'] = config['general']['dataset_name']
     options['batch_size'] = int(config['general']['batch_size'])
     options['seq_len'] = int(config['general']['seq_len'])
+    options['win_len'] = int(config['general']['win_len'])
     options['cell_type'] = str(config['general']['cell_type'])
     options['epochs'] = int(config['general']['epochs'])
     options['learning_rate'] = float(config['general']['learning_rate'])
     options['state_size'] = int(config['general']['state_size'])
     options['shuffle'] = bool(config['general']['shuffle'])
     options['embedding_size'] = int(config['general']['embedding_size'])
-    options['test_freq'] = int(config['general']['test_freq'])
-    options['disp_freq'] = int(config['general']['disp_freq'])
     options['use_attention'] = config.getboolean('general', 'use_attention')
     options['time_loss'] = str(config['general']['time_loss'])
+    options['num_glimpse'] = int(config['general']['num_glimpse'])
+    options['hl_size'] = int(config['general']['h_size'])
+    options['hg_size'] = int(config['general']['h_size'])
+    options['g_size'] = int(config['general']['g_size'])
+    options['loc_dim'] = int(config['general']['loc_dim'])
+
+    options['test_freq'] = int(config['general']['test_freq'])
+    options['disp_freq'] = int(config['general']['disp_freq'])
 
     return options
 
