@@ -138,22 +138,23 @@ def load_params(param_file='params.ini'):
 
 
 def prepare_minibatch(tuples, inference=False, options=None):
-    '''
-    produces a mini-batch of data in format required by model.
-    '''
     seqs = [t['sequence'] for t in tuples]
     times = [t['time'] for t in tuples]
     lengths = list(map(len, seqs))
     n_timesteps = max(lengths)
     n_samples = len(tuples)
+    '''try:
+        assert n_timesteps == options['seq_len']
+    except AssertionError:
+        print(n_timesteps, options['seq_len'])'''
 
     # prepare sequences data
-    seqs_matrix = np.zeros((n_timesteps, n_samples)).astype('int32')
+    seqs_matrix = np.zeros((options['seq_len'], n_samples)).astype('int32')
     for i, seq in enumerate(seqs):
         seqs_matrix[: lengths[i], i] = seq
     seqs_matrix = np.transpose(seqs_matrix)
 
-    times_matrix = np.zeros((n_timesteps, n_samples)).astype('int32')
+    times_matrix = np.zeros((options['seq_len'], n_samples)).astype('int32')
     for i, time in enumerate(times):
         times_matrix[: lengths[i], i] = time
     times_matrix = np.transpose(times_matrix) 

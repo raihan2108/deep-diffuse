@@ -7,6 +7,7 @@ import utils
 # from vanilla_rnn import VanillaRNN
 from rnn_model import RNNModel
 from lstm_model import LSTMModel
+from glimpse_attention_model import GlimpseAttentionModel
 
 if __name__ == '__main__':
     options = utils.load_params()
@@ -36,3 +37,8 @@ if __name__ == '__main__':
         lstm_ins = LSTMModel(options['state_size'], options['node_size'], options['batch_size'], options['seq_len'],
                            options['learning_rate'], loss_type=options['time_loss'], use_att=options['use_attention'])
         lstm_ins.run_model(train_loader, test_loader, options)
+    elif options['cell_type'] == 'glimpse':
+        print('running glimpse attention model')
+        print('using attention:' + str(options['use_attention']))
+        glimpse_ins = GlimpseAttentionModel(options, options['use_attention'])
+        glimpse_ins.run_model(train_loader, test_loader, options)
