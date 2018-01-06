@@ -16,8 +16,8 @@ if __name__ == '__main__':
     node_index = utils.load_graph(data_path)
     options['node_size'] = len(node_index)
     # print(nx.info(G))
-    train_instances = utils.load_instances(data_path, 'train', node_index, options['seq_len'], limit=-1)
-    test_instances = utils.load_instances(data_path, 'test', node_index, options['seq_len'], limit=-1)
+    train_instances = utils.load_instances(data_path, 'train', node_index, options['seq_len'], limit=5)
+    test_instances = utils.load_instances(data_path, 'test', node_index, options['seq_len'], limit=5)
     print(len(train_instances), len(test_instances))
 
     '''train_dt = utils.DataIterator(train_instances, options)

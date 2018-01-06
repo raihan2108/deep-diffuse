@@ -169,9 +169,9 @@ class GlimpseAttentionModel:
                     e * num_batches + b, options['epochs'] * num_batches, e + 1, b + 1, global_cost, global_node_cost,
                     global_time_cost))
 
-                if e != 0 and e % options['test_freq'] == 0:
+                '''if e != 0 and e % options['test_freq'] == 0:
                     scores = self.evaluate_model(sess, test_it)
-                    print(scores)
+                    print(scores)'''
 
     def evaluate_batch(self, test_batch, sess):
         y = None
