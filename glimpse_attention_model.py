@@ -137,7 +137,7 @@ class GlimpseAttentionModel:
         num_batches = len(train_it)
         with tf.Session() as sess:
             tf.global_variables_initializer().run(session=sess)
-            for e in range(options['epochs']):
+            for e in range(1, options['epochs']+ 1):
                 global_cost = 0.
                 global_time_cost = 0.
                 global_node_cost = 0.
@@ -164,12 +164,12 @@ class GlimpseAttentionModel:
                     '''output = sess.run(self.outputs, feed_dict=rnn_args)
                     print(output[0].shape)'''
 
-                if e != 0 and e % options['disp_freq'] == 0:
+                if e % options['disp_freq'] == 0:
                     print('[%d/%d] epoch: %d, batch: %d, train loss: %.4f, node loss: %.4f, time loss: %.4f' % (
                     e * num_batches + b, options['epochs'] * num_batches, e + 1, b + 1, global_cost, global_node_cost,
                     global_time_cost))
 
-                if e != 0 and e % options['test_freq'] == 0:
+                if e % options['test_freq'] == 0:
                     scores = self.evaluate_model(sess, test_it)
                     print(scores)
 
@@ -183,6 +183,8 @@ class GlimpseAttentionModel:
                     # self.init_state: np.zeros((2, self.batch_size, self.state_size))
                     }
         y_prob_ = sess.run([self.probs], feed_dict=rnn_args)
+        y_prob_ = y_prob_[0]
+        # print(y_prob_.shape)
         for j, p in enumerate(y_prob_):
             test_seq_len = test_batch[2][j]
             test_seq = test_batch[0][j][0: int(sum(test_seq_len))]
