@@ -110,7 +110,7 @@ class GlimpseAttentionModel:
         passable_output = tf.cast(tf.reshape(self.output_node, [-1]), dtype=tf.int32)
         self.node_loss = tf.nn.sparse_softmax_cross_entropy_with_logits(logits=self.logits,
                                                                    labels=passable_output)
-        self.node_cost = tf.reduce_sum(self.node_loss)
+        self.node_cost = tf.reduce_mean(self.node_loss)
         return self.node_cost
 
     def calc_time_loss(self, current_time):
