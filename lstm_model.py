@@ -90,7 +90,7 @@ class LSTMModel:
 
     def calc_time_loss(self, current_time):
         if self.loss_type == "intensity":
-            state_reshaped = tf.reshape(self.outputs, [-1, self.state_size])
+            state_reshaped = tf.reshape(self.last_state, [-1, self.state_size])
             self.hist_influence = tf.matmul(state_reshaped, self.Vt)
             self.curr_influence = self.wt * current_time
             self.rate_t = self.hist_influence + self.curr_influence + self.bt
