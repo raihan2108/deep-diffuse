@@ -56,8 +56,11 @@ class GlimpseAttentionModel:
         self.emb = tf.get_variable('emb', initializer=tf.truncated_normal(shape=[self.vertex_size, self.emb_size]))
         self.Vn = tf.get_variable('Vn', initializer=tf.truncated_normal(shape=[self.state_size, self.vertex_size]))
         self.bn = tf.get_variable('bn', shape=[self.vertex_size], initializer=tf.constant_initializer(0.0))
+
         self.Vt = tf.get_variable('Vt', initializer=tf.truncated_normal(shape=[self.state_size, 1]))
         self.bt = tf.get_variable('bt', shape=[1], initializer=tf.constant_initializer(0.0))
+        self.wt = tf.get_variable("wo", shape=[1], dtype=tf.float32,
+                                  initializer=tf.contrib.layers.xavier_initializer)
 
         if self.use_att:
             self.W_omega = tf.Variable(tf.random_normal([self.state_size, self.attention_size], stddev=0.1))
@@ -114,16 +117,15 @@ class GlimpseAttentionModel:
         return self.node_cost
 
     def calc_time_loss(self, current_time):
-        '''if self.loss_type == "intensity":
-            print("reached here")
-            self._hist_influence = tf.matmul(rnnstates, self._V)
-            self._curr_influence = self._wo * current_time
-            self._rate_t = self._hist_influence + self._curr_influence + self._bo
-            self._loglik = (self._rate_t + tf.exp(self._hist_influence + self._bo) * (1 / self._wo)
-                     - (1 / self._wo) * tf.exp(self._rate_t))
+        if self.loss_type == "intensity":
+            state_reshaped = tf.reshape(self.outputs, [-1, self.state_size])
+            self._hist_influence = tf.matmul(state_reshaped, self.Vt)
+            self._curr_influence = self.wt * current_time
+            self._rate_t = self._hist_influence + self._curr_influence + self.bt
+            self._loglik = (self._rate_t + tf.exp(self._hist_influence + self.bt) * (1 / self.wt)
+                     - (1 / self.wt) * tf.exp(self._rate_t))
             return - self._loglik
-        el'''
-        if self.loss_type == "mse":
+        elif self.loss_type == "mse":
             state_reshaped = tf.reshape(self.outputs, [-1, self.state_size])
             time_hat = tf.matmul(state_reshaped, self.Vt) + self.bt
             self.time_loss = tf.abs(tf.reshape(time_hat, [-1]) - current_time)
