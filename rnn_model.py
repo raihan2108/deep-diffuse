@@ -81,13 +81,13 @@ class RNNModel:
 
     def calc_time_loss(self, current_time):
         if self.loss_type == "intensity":
-            state_reshaped = tf.reshape(self.last_state, [-1, self.state_size])
-            self._hist_influence = tf.matmul(state_reshaped, self.Vt)
-            self._curr_influence = self.wt * current_time
-            self._rate_t = self._hist_influence + self._curr_influence + self.bt
-            self._loglik = (self._rate_t + tf.exp(self._hist_influence + self.bt) * (1 / self.wt)
-                     - (1 / self.wt) * tf.exp(self._rate_t))
-            return - self._loglik
+            state_reshaped = tf.reshape(self.outputs, [-1, self.state_size])
+            self.hist_influence = tf.matmul(state_reshaped, self.Vt)
+            self.curr_influence = self.wt * current_time
+            self.rate_t = self.hist_influence + self.curr_influence + self.bt
+            self.loglik = (self.rate_t + tf.exp(self.hist_influence + self.bt) * (1 / self.wt)
+                           - (1 / self.wt) * tf.exp(self.rate_t))
+            return -self.loglik
         elif self.loss_type == "mse":
             state_reshaped = tf.reshape(self.last_state, [-1, self.state_size])
             time_hat = tf.matmul(state_reshaped, self.Vt) + self.bt
