@@ -3,6 +3,7 @@ import networkx as nx
 from os.path import join
 
 import utils
+import data_utils as du
 # from basic_model import VanillaRNN
 # from vanilla_rnn import VanillaRNN
 from rnn_model import RNNModel
@@ -23,9 +24,9 @@ if __name__ == '__main__':
     '''train_dt = utils.DataIterator(train_instances, options)
     # new_batch = train_dt.next_batch()
     test_dt = utils.DataIterator(test_instances, options)'''
-    train_loader = utils.Loader(train_instances, options)
-    test_loader = utils.Loader(test_instances, options)
-    if options['cell_type'] == 'rnn':
+    train_loader = du.Loader(train_instances, options)
+    test_loader = du.Loader(test_instances, options)
+    '''if options['cell_type'] == 'rnn':
         print('running rnn model')
         print('using attention:' + str(options['use_attention']))
         rnn_ins = RNNModel(options['state_size'], options['node_size'], options['batch_size'], options['seq_len'],
@@ -41,4 +42,4 @@ if __name__ == '__main__':
         print('running glimpse attention model')
         print('using attention:' + str(options['use_attention']))
         glimpse_ins = GlimpseAttentionModel(options, options['use_attention'])
-        glimpse_ins.run_model(train_loader, test_loader, options)
+        glimpse_ins.run_model(train_loader, test_loader, options)'''
