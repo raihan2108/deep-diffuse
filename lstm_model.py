@@ -89,6 +89,7 @@ class LSTMModel:
         return self.node_cost
 
     def calc_time_loss(self, current_time):
+        time_loss = 0.0
         if self.loss_type == "intensity":
             state_reshaped = tf.reshape(self.last_state, [-1, self.state_size])
             self.hist_influence = tf.matmul(state_reshaped, self.Vt)
@@ -96,12 +97,14 @@ class LSTMModel:
             self.rate_t = self.hist_influence + self.curr_influence + self.bt
             self.loglik = (self.rate_t + tf.exp(self.hist_influence + self.bt) * (1 / self.wt)
                            - (1 / self.wt) * tf.exp(self.rate_t))
-            return -self.loglik
+            time_loss = -self.loglik
+            # return -self.loglik
         elif self.loss_type == "mse":
             state_reshaped = tf.reshape(self.last_state, [-1, self.state_size])
             time_hat = tf.matmul(state_reshaped, self.Vt) + self.bt
-            self.time_loss = tf.abs(tf.reshape(time_hat, [-1]) - current_time)
-        self.time_cost = tf.reduce_mean(self.time_loss)
+            time_loss = tf.abs(tf.reshape(time_hat, [-1]) - current_time)
+            # return time_loss
+        self.time_cost = tf.reduce_mean(tf.reduce_sum(time_loss, axis=1))
         return self.time_cost
 
     def run_model(self, train_it, test_it, options):
