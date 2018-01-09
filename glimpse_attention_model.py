@@ -1,10 +1,12 @@
 import numpy as np
 import pandas as pd
+from math import sqrt
 import tensorflow as tf
 from tensorflow.contrib import legacy_seq2seq
-from tensorflow.contrib import seq2seq
-
+# from tensorflow.contrib import seq2seq
+from sklearn.metrics import mean_squared_error
 distributions = tf.contrib.distributions
+
 import metrics
 
 
@@ -39,6 +41,7 @@ class GlimpseAttentionModel:
         self.loss_type = options['time_loss']
         self.win_len = options['win_len']
         self.emb_size = options['embedding_size']
+        self.n_samples = options['n_samples']
         self.loss_trade_off = 0.01
         self.options = options
         self.use_att = False
@@ -60,7 +63,7 @@ class GlimpseAttentionModel:
         self.Vt = tf.get_variable('Vt', initializer=tf.truncated_normal(shape=[self.state_size, 1]))
         self.bt = tf.get_variable('bt', shape=[1], initializer=tf.constant_initializer(0.0))
         self.wt = tf.get_variable("wo", shape=[1], dtype=tf.float32,
-                                  initializer=tf.contrib.layers.xavier_initializer)
+                                  initializer=tf.contrib.layers.xavier_initializer())
 
         if self.use_att:
             self.W_omega = tf.Variable(tf.random_normal([self.state_size, self.attention_size], stddev=0.1))
@@ -142,7 +145,7 @@ class GlimpseAttentionModel:
         num_batches = len(train_it)
         with tf.Session() as sess:
             tf.global_variables_initializer().run(session=sess)
-            for e in range(1, options['epochs']+ 1):
+            for e in range(1, options['epochs'] + 1):
                 global_cost = 0.
                 global_time_cost = 0.
                 global_node_cost = 0.
@@ -175,21 +178,32 @@ class GlimpseAttentionModel:
                     global_time_cost))
 
                 if e % options['test_freq'] == 0:
-                    scores = self.evaluate_model(sess, test_it)
-                    print(scores)
+                    node_scores, time_score = self.evaluate_model(sess, test_it)
+                    print(node_scores, time_score)
+
+    def predict_time(self, sess, time_seq, time_label):
+        all_log_lik = np.zeros_like(time_seq)
+        for i in range(0, self.seq_len):
+            current_input = time_seq[:, i]
+            log_lik = sess.run([self.loglik], feed_dict={self.output_time: current_input})
+            log_lik = np.exp(log_lik[0])
+            all_log_lik[:, i] = log_lik
+        pred_time = np.mean(all_log_lik, axis=1)
+        return sqrt(mean_squared_error(time_label, pred_time))
 
     def evaluate_batch(self, test_batch, sess):
         y = None
         y_prob = None
         seq, time, seq_mask, label_n, label_t = test_batch
         y_ = label_n
+        time_pred = self.predict_time(sess, time, label_t)
         rnn_args = {self.input_nodes: seq,
                     self.input_times: time
                     # self.init_state: np.zeros((2, self.batch_size, self.state_size))
                     }
         y_prob_ = sess.run([self.probs], feed_dict=rnn_args)
         y_prob_ = y_prob_[0]
-        # print(y_prob_.shape)
+        # print(y_prob_.shape, log_lik.shape)
         for j, p in enumerate(y_prob_):
             test_seq_len = test_batch[2][j]
             test_seq = test_batch[0][j][0: int(sum(test_seq_len))]
@@ -202,7 +216,8 @@ class GlimpseAttentionModel:
         else:
             y = np.concatenate((y, y_), axis=0)
             y_prob = np.concatenate((y_prob, y_prob_), axis=0)
-        return metrics.portfolio(y_prob, y, k_list=[10, 50, 100])
+
+        return metrics.portfolio(y_prob, y, k_list=[10, 50, 100]), time_pred
 
     def get_average_score(self, scores):
         df = pd.DataFrame(scores)
@@ -212,8 +227,8 @@ class GlimpseAttentionModel:
         test_batch_size = len(test_it)
         # y = None
         # y_prob = None
-        scores = []
-
+        node_scores = []
+        time_scores = []
         for i in range(0, test_batch_size):
             test_batch = test_it()
 
@@ -221,8 +236,9 @@ class GlimpseAttentionModel:
             if seq.shape[0] < self.batch_size:
                 continue
             else:
-                score = self.evaluate_batch(test_batch, sess)
-                scores.append(score)
+                node_score, time_score = self.evaluate_batch(test_batch, sess)
+                node_scores.append(node_score)
+                time_scores.append(time_score)
             '''y_ = label_n
             rnn_args = {self.input_nodes: seq,
                         self.input_times: time
@@ -243,7 +259,7 @@ class GlimpseAttentionModel:
             else:
                 y = np.concatenate((y, y_), axis=0)
                 y_prob = np.concatenate((y_prob, y_prob_), axis=0)'''
-        return self.get_average_score(scores)
+        return self.get_average_score(node_scores), np.mean(np.asarray(time_scores))
         # return metrics.portfolio(y_prob, y, k_list=[10, 50, 100])
 
 

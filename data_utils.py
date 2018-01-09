@@ -108,6 +108,7 @@ def load_params(param_file='params.ini'):
     options['state_size'] = int(config['general']['state_size'])
     options['shuffle'] = bool(config['general']['shuffle'])
     options['embedding_size'] = int(config['general']['embedding_size'])
+    options['n_samples'] = int(config['general']['n_samples'])
     options['use_attention'] = config.getboolean('general', 'use_attention')
     options['time_loss'] = str(config['general']['time_loss'])
     options['num_glimpse'] = int(config['general']['num_glimpse'])
