@@ -43,7 +43,8 @@ def load_graph(data_path):
     return node_index
 
 
-def load_instances(data_path, file_type, node_index, seq_len, limit, ratio=1.0, testing=False):
+def load_instances(data_path, file_type, node_index, seq_len, limit, ratio=1.0):
+    max_diff = 0
     pkl_path = join(data_path, file_type + '.pkl')
     if isfile(pkl_path):
         instances = pickle.load(open(pkl_path, 'rb'))
@@ -55,13 +56,19 @@ def load_instances(data_path, file_type, node_index, seq_len, limit, ratio=1.0, 
                 query, cascade = line.strip().split(' ', 1)
                 cascade_nodes = list(map(int, cascade.split(' ')[::2]))
                 cascade_times = list(map(float, cascade.split(' ')[1::2]))
+                # print(len(cascade_nodes), len(cascade_times))
                 if seq_len is not None:
                     t = seq_len * 2
                     cascade_nodes = cascade_nodes[:t+1]
                     cascade_times = cascade_times[:t+2]
                     cascade_times = process_timestamps(cascade_times)
-                    assert len(cascade_nodes) == len(cascade_times)
+                    try:
+                        assert len(cascade_nodes) == len(cascade_times)
+                    except:
+                        cascade_nodes.pop()
+                        assert len(cascade_nodes) == len(cascade_times)
                 cascade_nodes = [node_index[x] for x in cascade_nodes]
+                max_diff = max(max_diff, max(cascade_times))
                 ins = process_cascade(cascade_nodes, cascade_times, seq_len)
                 instances.extend(ins)
                 if limit is not None and i == limit:
@@ -71,26 +78,26 @@ def load_instances(data_path, file_type, node_index, seq_len, limit, ratio=1.0, 
     indices = np.random.choice(total_samples, int(
         total_samples * ratio), replace=False)
     sampled_instances = [instances[i] for i in indices]
-    return sampled_instances
+    return sampled_instances, max_diff
 
 
 def process_cascade(nodes, timestamps, seq_len):
     size = len(nodes)
     examples = []
-    for i in range(0, seq_len):
-        if i == size - 1:
-            return examples
+    for i in range(0, size-seq_len-1):
 
-        prefix_c = nodes[i: seq_len + i + 1]
-        prefix_t = timestamps[i: seq_len + i + 1]
+        prefix_c = nodes[i: seq_len + i]
+        prefix_t = timestamps[i: seq_len + i]
 
-        label_n = nodes[seq_len + i + 1]
-        label_t = timestamps[seq_len + i + 1]
+        label_n = nodes[seq_len + i]
+        label_t = timestamps[seq_len + i]
+        # print(len(prefix_c), len(prefix_t))
 
         example = {'sequence': prefix_c, 'time': prefix_t,
                    'label_n': label_n, 'label_t': label_t}
 
         examples.append(example)
+    return examples
 
 
 def load_params(param_file='params.ini'):

@@ -45,6 +45,7 @@ class GlimpseAttentionModel:
         self.loss_trade_off = 0.01
         self.options = options
         self.use_att = False
+        self.max_diff = options['max_diff']
         '''if use_att:
             self.use_att = True
             self.attention_size = self.win_len'''
@@ -184,7 +185,7 @@ class GlimpseAttentionModel:
     def predict_time(self, sess, time_seq, time_label, node_seq):
         all_log_lik = np.zeros((self.batch_size, self.n_samples), dtype=np.float)
         for i in range(0, self.n_samples):
-            samp = np.random.randint(low=0, high=100, size=self.batch_size)
+            samp = np.random.randint(low=0, high=self.max_diff, size=self.batch_size)
             rnn_args = {self.output_time: samp, self.input_nodes: node_seq, self.input_times: time_seq}
             log_lik, hist_in, curr_in = sess.run([self.loglik, self.hist_influence, self.curr_influence], feed_dict=rnn_args)
             # log_lik = np.exp(log_lik[0])
