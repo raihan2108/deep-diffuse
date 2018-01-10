@@ -44,6 +44,7 @@ def load_graph(data_path):
 
 
 def load_instances(data_path, file_type, node_index, seq_len, limit, ratio=1.0, testing=False):
+    max_diff = 0
     pkl_path = join(data_path, file_type + '.pkl')
     if isfile(pkl_path):
         instances = pickle.load(open(pkl_path, 'rb'))
@@ -61,6 +62,7 @@ def load_instances(data_path, file_type, node_index, seq_len, limit, ratio=1.0, 
                     cascade_times = process_timestamps(cascade_times)
                     assert len(cascade_nodes) == len(cascade_times)
                 cascade_nodes = [node_index[x] for x in cascade_nodes]
+                max_diff = max(max_diff, max(cascade_times))
                 ins = process_cascade(cascade_nodes, cascade_times, testing)
                 instances.extend(ins)
                 if limit is not None and i == limit:
@@ -70,7 +72,7 @@ def load_instances(data_path, file_type, node_index, seq_len, limit, ratio=1.0, 
     indices = np.random.choice(total_samples, int(
         total_samples * ratio), replace=False)
     sampled_instances = [instances[i] for i in indices]
-    return sampled_instances
+    return sampled_instances, max_diff
 
 
 def process_cascade(cascade, timestamps, testing=False):

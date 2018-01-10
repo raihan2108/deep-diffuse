@@ -17,27 +17,27 @@ if __name__ == '__main__':
     node_index = utils.load_graph(data_path)
     options['node_size'] = len(node_index)
     # print(nx.info(G))
-    train_instances, max_diff_train = du.load_instances(data_path, 'train', node_index, options['seq_len'], limit=-1)
-    test_instances, max_diff_test = du.load_instances(data_path, 'test', node_index, options['seq_len'], limit=-1)
+    train_instances, max_diff_train = utils.load_instances(data_path, 'train', node_index, options['seq_len'], limit=-1)
+    test_instances, max_diff_test = utils.load_instances(data_path, 'test', node_index, options['seq_len'], limit=-1)
     options['max_diff'] = max_diff_train
     print(len(train_instances), len(test_instances))
 
     '''train_dt = utils.DataIterator(train_instances, options)
     # new_batch = train_dt.next_batch()
     test_dt = utils.DataIterator(test_instances, options)'''
-    train_loader = du.Loader(train_instances, options)
-    test_loader = du.Loader(test_instances, options)
+    train_loader = utils.Loader(train_instances, options)
+    test_loader = utils.Loader(test_instances, options)
     if options['cell_type'] == 'rnn':
         print('running rnn model')
         print('using attention:' + str(options['use_attention']))
         rnn_ins = RNNModel(options['state_size'], options['node_size'], options['batch_size'], options['seq_len'],
-                           options['learning_rate'], loss_type=options['time_loss'], use_att=options['use_attention'])
+                           options['learning_rate'], max_diff_train, loss_type=options['time_loss'], use_att=options['use_attention'])
         rnn_ins.run_model(train_loader, test_loader, options)
     elif options['cell_type'] == 'lstm':
         print('running lstm model')
         print('using attention:' + str(options['use_attention']))
         lstm_ins = LSTMModel(options['state_size'], options['node_size'], options['batch_size'], options['seq_len'],
-                           options['learning_rate'], loss_type=options['time_loss'], use_att=options['use_attention'])
+                           options['learning_rate'], max_diff_train, loss_type=options['time_loss'], use_att=options['use_attention'])
         lstm_ins.run_model(train_loader, test_loader, options)
     elif options['cell_type'] == 'glimpse':
         print('running glimpse attention model')

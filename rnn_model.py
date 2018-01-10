@@ -34,7 +34,7 @@ class RNNModel:
         self.Vt = tf.get_variable('Vt', initializer=tf.truncated_normal(shape=[self.state_size, 1]))
         self.bt = tf.get_variable('bt', shape=[1], initializer=tf.constant_initializer(0.0))
         self.wt = tf.get_variable("wo", shape=[1], dtype=tf.float32,
-                                  initializer=tf.contrib.layers.xavier_initializer)
+                                  initializer=tf.contrib.layers.xavier_initializer())
 
         if self.use_att:
             self.W_omega = tf.Variable(tf.random_normal([self.state_size, self.attention_size], stddev=0.1))
@@ -83,7 +83,7 @@ class RNNModel:
         time_loss = 0.0
         if self.loss_type == "intensity":
             state_reshaped = tf.reshape(self.last_state, [-1, self.state_size])
-            self.hist_influence = tf.matmul(state_reshaped, self.Vt)
+            self.hist_influence = tf.reshape(tf.matmul(state_reshaped, self.Vt), [-1])
             self.curr_influence = self.wt * current_time
             self.rate_t = self.hist_influence + self.curr_influence + self.bt
             self.loglik = (self.rate_t + tf.exp(self.hist_influence + self.bt) * (1 / self.wt)

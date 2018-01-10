@@ -1,10 +1,13 @@
 import numpy as np
 import tensorflow as tf
 import metrics
+from sklearn.metrics import mean_squared_error
+from math import sqrt
+import pandas as pd
 
 
 class LSTMModel:
-    def __init__(self, state_size, vertex_size, batch_size, seq_len, learning_rate, loss_type='mse', use_att=False):
+    def __init__(self, state_size, vertex_size, batch_size, seq_len, learning_rate, max_diff, loss_type='mse', n_samples=20, use_att=False):
         self.batch_size = batch_size
         self.seq_len = seq_len
         self.state_size = state_size
@@ -12,6 +15,8 @@ class LSTMModel:
         self.vertex_size = vertex_size
         self.loss_type = loss_type
         self.loss_trade_off = 0.01
+        self.max_diff = max_diff
+        self.n_samples = n_samples
         self.use_att = False
         if use_att:
             self.use_att = True
@@ -37,7 +42,7 @@ class LSTMModel:
         self.Vt = tf.get_variable('Vt', initializer=tf.truncated_normal(shape=[self.state_size, 1]))
         self.bt = tf.get_variable('bt', shape=[1], initializer=tf.constant_initializer(0.0))
         self.wt = tf.get_variable("wo", shape=[1], dtype=tf.float32,
-                                  initializer=tf.contrib.layers.xavier_initializer)
+                                  initializer=tf.contrib.layers.xavier_initializer())
 
         if self.use_att:
             self.W_omega = tf.Variable(tf.random_normal([self.state_size, self.attention_size], stddev=0.1))
@@ -92,7 +97,7 @@ class LSTMModel:
         time_loss = 0.0
         if self.loss_type == "intensity":
             state_reshaped = tf.reshape(self.last_state, [-1, self.state_size])
-            self.hist_influence = tf.matmul(state_reshaped, self.Vt)
+            self.hist_influence = tf.reshape(tf.matmul(state_reshaped, self.Vt), [-1])
             self.curr_influence = self.wt * current_time
             self.rate_t = self.hist_influence + self.curr_influence + self.bt
             self.loglik = (self.rate_t + tf.exp(self.hist_influence + self.bt) * (1 / self.wt)
@@ -104,8 +109,29 @@ class LSTMModel:
             time_hat = tf.matmul(state_reshaped, self.Vt) + self.bt
             time_loss = tf.abs(tf.reshape(time_hat, [-1]) - current_time)
             # return time_loss
-        self.time_cost = tf.reduce_mean(tf.reduce_sum(time_loss, axis=1))
+        self.time_cost = tf.reduce_mean(time_loss)
         return self.time_cost
+
+    def predict_time(self, sess, time_seq, time_label, node_seq):
+        all_log_lik = np.zeros((self.batch_size, self.n_samples), dtype=np.float)
+        init_state = np.zeros((2, self.batch_size, self.state_size), dtype=np.float)
+        for i in range(0, self.n_samples):
+            samp = np.random.randint(low=0, high=self.max_diff, size=self.batch_size)
+            rnn_args = {self.output_time: samp, self.input_nodes: node_seq, self.input_times: time_seq,
+                        self.init_state: init_state}
+            log_lik, hist_in, curr_in = sess.run([self.loglik, self.hist_influence, self.curr_influence], feed_dict=rnn_args)
+            # log_lik = np.exp(log_lik[0])
+            # print(log_lik.shape, hist_in.shape, curr_in.shape)
+            all_log_lik[:, i] = np.multiply(log_lik, samp)
+        pred_time = np.mean(all_log_lik, axis=1)
+        '''for i in range(0, self.seq_len):
+            current_input = time_seq[:, i]
+            rnn_args = {self.output_time: time_label, self.input_nodes: node_seq}
+            log_lik = sess.run([self.loglik], feed_dict=rnn_args)
+            log_lik = np.exp(log_lik[0])
+            all_log_lik[:, i] = log_lik
+        pred_time = np.mean(all_log_lik, axis=1)'''
+        return sqrt(mean_squared_error(time_label, pred_time)) / self.batch_size
 
     def run_model(self, train_it, test_it, options):
         tf.reset_default_graph()
@@ -118,7 +144,7 @@ class LSTMModel:
                 global_cost = 0.
                 global_time_cost = 0.
                 global_node_cost = 0.
-                init_state = np.zeros((2, self.batch_size, self.state_size))
+                init_state = np.zeros((2, self.batch_size, self.state_size), dtype=np.float)
                 for b in range(num_batches):
                     one_batch = train_it()
                     seq, time, seq_mask, label_n, label_t = one_batch
@@ -143,26 +169,66 @@ class LSTMModel:
 
                 if e != 0 and e % options['disp_freq'] == 0:
                     print('[%d/%d] epoch: %d, batch: %d, train loss: %.4f, node loss: %.4f, time loss: %.4f' % (
-                    e * num_batches + b, options['epochs'] * num_batches, e + 1, b + 1, global_cost, global_node_cost,
+                    e * num_batches + b, options['epochs'] * num_batches, e, b, global_cost, global_node_cost,
                     global_time_cost))
 
                 if e != 0 and e % options['test_freq'] == 0:
                     scores = self.evaluate_model(sess, test_it)
                     print(scores)
 
-    def evaluate_model(self, sess, test_it):
-        test_batch_size = len(test_it)
+    def evaluate_batch(self, test_batch, sess):
         y = None
         y_prob = None
+        seq, time, seq_mask, label_n, label_t = test_batch
+        y_ = label_n
+        time_pred = self.predict_time(sess, time, label_t, seq)
+        rnn_args = {self.input_nodes: seq,
+                    self.input_times: time,
+                    self.init_state: np.zeros((2, self.batch_size, self.state_size))
+                    }
+        y_prob_ = sess.run([self.probs], feed_dict=rnn_args)
+        y_prob_ = y_prob_[0]
+        # print(y_prob_.shape, log_lik.shape)
+        for j, p in enumerate(y_prob_):
+            test_seq_len = test_batch[2][j]
+            test_seq = test_batch[0][j][0: int(sum(test_seq_len))]
+            p[test_seq.astype(int)] = 0
+            y_prob_[j, :] = p / float(np.sum(p))
+
+        if y_prob is None:
+            y_prob = y_prob_
+            y = y_
+        else:
+            y = np.concatenate((y, y_), axis=0)
+            y_prob = np.concatenate((y_prob, y_prob_), axis=0)
+
+        return metrics.portfolio(y_prob, y, k_list=[10, 50, 100]), time_pred
+
+    def get_average_score(self, scores):
+        df = pd.DataFrame(scores)
+        return dict(df.mean())
+
+    def evaluate_model(self, sess, test_it):
+        test_batch_size = len(test_it)
+        # y = None
+        # y_prob = None
+        node_scores = []
+        time_scores = []
         for i in range(0, test_batch_size):
             test_batch = test_it()
+
             seq, time, seq_mask, label_n, label_t = test_batch
             if seq.shape[0] < self.batch_size:
                 continue
-            y_ = label_n
+            else:
+                node_score, time_score = self.evaluate_batch(test_batch, sess)
+                node_scores.append(node_score)
+                time_scores.append(time_score)
+            '''y_ = label_n
             rnn_args = {self.input_nodes: seq,
-                        self.input_times: time,
-                        self.init_state: np.zeros((2, self.batch_size, self.state_size))}
+                        self.input_times: time
+                        # self.init_state: np.zeros((2, self.batch_size, self.state_size))
+                        }
             y_prob_ = sess.run([self.probs], feed_dict=rnn_args)
 
             y_prob_ = y_prob_[0]
@@ -177,6 +243,5 @@ class LSTMModel:
                 y = y_
             else:
                 y = np.concatenate((y, y_), axis=0)
-                y_prob = np.concatenate((y_prob, y_prob_), axis=0)
-
-        return metrics.portfolio(y_prob, y, k_list=[10, 50, 100])
+                y_prob = np.concatenate((y_prob, y_prob_), axis=0)'''
+        return self.get_average_score(node_scores), np.mean(np.asarray(time_scores)) // test_batch_size

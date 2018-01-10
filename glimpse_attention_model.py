@@ -101,10 +101,10 @@ class GlimpseAttentionModel:
             self.output = self.outputs[-1]'''
 
         self.cost = self.calc_node_loss() + self.loss_trade_off * self.calc_time_loss(self.output_time)
-        self.optimizer = tf.train.AdamOptimizer(learning_rate=self.learning_rate)
-        grads, tvars = zip(*self.optimizer.compute_gradients(self.cost))
+        self.optimizer = tf.train.AdamOptimizer(learning_rate=self.learning_rate).minimize(self.cost)
+        '''grads, tvars = zip(*self.optimizer.compute_gradients(self.cost))
         capped_gvs = tf.clip_by_global_norm(grads, self.clipping_val)[0]
-        self.optimizer = self.optimizer.apply_gradients(zip(capped_gvs, tvars))
+        self.optimizer = self.optimizer.apply_gradients(zip(capped_gvs, tvars))'''
 
     '''def attention(self, states):
         v = tf.tanh(tf.tensordot(states, self.W_omega, axes=1) + self.b_omega)
@@ -179,7 +179,7 @@ class GlimpseAttentionModel:
 
                 if e % options['disp_freq'] == 0:
                     print('[%d/%d] epoch: %d, batch: %d, train loss: %.4f, node loss: %.4f, time loss: %.4f' % (
-                    e * num_batches + b, options['epochs'] * num_batches, e + 1, b + 1, global_cost, global_node_cost,
+                    e * num_batches + b, options['epochs'] * num_batches, e, b, global_cost, global_node_cost,
                     global_time_cost))
 
                 if e % options['test_freq'] == 0:
