@@ -43,6 +43,7 @@ class GlimpseAttentionModel:
         self.emb_size = options['embedding_size']
         self.n_samples = options['n_samples']
         self.loss_trade_off = 0.01
+        self.clipping_val = options['clipping_val']
         self.options = options
         self.use_att = False
         self.max_diff = options['max_diff']
@@ -100,7 +101,10 @@ class GlimpseAttentionModel:
             self.output = self.outputs[-1]'''
 
         self.cost = self.calc_node_loss() + self.loss_trade_off * self.calc_time_loss(self.output_time)
-        self.optimizer = tf.train.AdamOptimizer(learning_rate=self.learning_rate).minimize(self.cost)
+        self.optimizer = tf.train.AdamOptimizer(learning_rate=self.learning_rate)
+        grads, tvars = zip(*self.optimizer.compute_gradients(self.cost))
+        capped_gvs = tf.clip_by_global_norm(grads, self.clipping_val)[0]
+        self.optimizer = self.optimizer.apply_gradients(zip(capped_gvs, tvars))
 
     '''def attention(self, states):
         v = tf.tanh(tf.tensordot(states, self.W_omega, axes=1) + self.b_omega)
@@ -199,7 +203,7 @@ class GlimpseAttentionModel:
             log_lik = np.exp(log_lik[0])
             all_log_lik[:, i] = log_lik
         pred_time = np.mean(all_log_lik, axis=1)'''
-        return sqrt(mean_squared_error(time_label, pred_time))
+        return sqrt(mean_squared_error(time_label, pred_time)) / self.batch_size
 
     def evaluate_batch(self, test_batch, sess):
         y = None
@@ -269,7 +273,7 @@ class GlimpseAttentionModel:
             else:
                 y = np.concatenate((y, y_), axis=0)
                 y_prob = np.concatenate((y_prob, y_prob_), axis=0)'''
-        return self.get_average_score(node_scores), np.mean(np.asarray(time_scores))
+        return self.get_average_score(node_scores), np.mean(np.asarray(time_scores)) // test_batch_size
         # return metrics.portfolio(y_prob, y, k_list=[10, 50, 100])
 
 

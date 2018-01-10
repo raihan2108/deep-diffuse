@@ -131,6 +131,7 @@ def load_params(param_file='params.ini'):
     options['hg_size'] = int(config['general']['h_size'])
     options['g_size'] = int(config['general']['g_size'])
     options['loc_dim'] = int(config['general']['loc_dim'])
+    options['clipping_val'] = float(config['general']['clipping_val'])
 
     options['test_freq'] = int(config['general']['test_freq'])
     options['disp_freq'] = int(config['general']['disp_freq'])
