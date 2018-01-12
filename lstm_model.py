@@ -7,7 +7,8 @@ import pandas as pd
 
 
 class LSTMModel:
-    def __init__(self, state_size, vertex_size, batch_size, seq_len, learning_rate, max_diff, loss_type='mse', n_samples=20, use_att=False):
+    def __init__(self, state_size, vertex_size, batch_size, seq_len, learning_rate, max_diff, loss_type='mse',
+                 n_samples=20, use_att=False, node_pred=False):
         self.batch_size = batch_size
         self.seq_len = seq_len
         self.state_size = state_size
@@ -16,6 +17,7 @@ class LSTMModel:
         self.loss_type = loss_type
         self.loss_trade_off = 0.01
         self.max_diff = max_diff
+        self.node_pred = node_pred
         self.n_samples = n_samples
         self.use_att = False
         if use_att:
@@ -79,6 +81,7 @@ class LSTMModel:
         '''self.time_cost = tf.constant(0.0)
         self.node_cost = tf.constant(0.0)
         self.cost = self.time_cost + self.node_cost'''
+        # self.node_cost = tf.constant(0.0)
         self.cost = self.calc_node_loss() + self.loss_trade_off * self.calc_time_loss(self.output_time)
         self.optimizer = tf.train.AdamOptimizer(learning_rate=self.learning_rate).minimize(self.cost)
 
@@ -181,28 +184,35 @@ class LSTMModel:
         y_prob = None
         seq, time, seq_mask, label_n, label_t = test_batch
         y_ = label_n
-        time_pred = self.predict_time(sess, time, label_t, seq)
-        rnn_args = {self.input_nodes: seq,
-                    self.input_times: time,
-                    self.init_state: np.zeros((2, self.batch_size, self.state_size))
-                    }
-        y_prob_ = sess.run([self.probs], feed_dict=rnn_args)
-        y_prob_ = y_prob_[0]
-        # print(y_prob_.shape, log_lik.shape)
-        for j, p in enumerate(y_prob_):
-            test_seq_len = test_batch[2][j]
-            test_seq = test_batch[0][j][0: int(sum(test_seq_len))]
-            p[test_seq.astype(int)] = 0
-            y_prob_[j, :] = p / float(np.sum(p))
-
-        if y_prob is None:
-            y_prob = y_prob_
-            y = y_
+        if self.loss_type == 'mse':
+            time_pred = 0
         else:
-            y = np.concatenate((y, y_), axis=0)
-            y_prob = np.concatenate((y_prob, y_prob_), axis=0)
+            time_pred = self.predict_time(sess, time, label_t, seq)
+        if self.node_pred:
+            rnn_args = {self.input_nodes: seq,
+                        self.input_times: time,
+                        self.init_state: np.zeros((2, self.batch_size, self.state_size))
+                        }
+            y_prob_ = sess.run([self.probs], feed_dict=rnn_args)
+            y_prob_ = y_prob_[0]
+            # print(y_prob_.shape, log_lik.shape)
+            for j, p in enumerate(y_prob_):
+                test_seq_len = test_batch[2][j]
+                test_seq = test_batch[0][j][0: int(sum(test_seq_len))]
+                p[test_seq.astype(int)] = 0
+                y_prob_[j, :] = p / float(np.sum(p))
 
-        return metrics.portfolio(y_prob, y, k_list=[10, 50, 100]), time_pred
+            if y_prob is None:
+                y_prob = y_prob_
+                y = y_
+            else:
+                y = np.concatenate((y, y_), axis=0)
+                y_prob = np.concatenate((y_prob, y_prob_), axis=0)
+            node_score = metrics.portfolio(y_prob, y, k_list=[10, 50, 100])
+        else:
+            node_score = {}
+
+        return node_score, time_pred
 
     def get_average_score(self, scores):
         df = pd.DataFrame(scores)

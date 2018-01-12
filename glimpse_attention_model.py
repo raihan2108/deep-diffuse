@@ -43,6 +43,7 @@ class GlimpseAttentionModel:
         self.emb_size = options['embedding_size']
         self.n_samples = options['n_samples']
         self.loss_trade_off = 0.01
+        self.node_pred = options['node_pred']
         self.clipping_val = options['clipping_val']
         self.options = options
         self.use_att = False
@@ -210,28 +211,35 @@ class GlimpseAttentionModel:
         y_prob = None
         seq, time, seq_mask, label_n, label_t = test_batch
         y_ = label_n
-        time_pred = self.predict_time(sess, time, label_t, seq)
-        rnn_args = {self.input_nodes: seq,
-                    self.input_times: time
-                    # self.init_state: np.zeros((2, self.batch_size, self.state_size))
-                    }
-        y_prob_ = sess.run([self.probs], feed_dict=rnn_args)
-        y_prob_ = y_prob_[0]
-        # print(y_prob_.shape, log_lik.shape)
-        for j, p in enumerate(y_prob_):
-            test_seq_len = test_batch[2][j]
-            test_seq = test_batch[0][j][0: int(sum(test_seq_len))]
-            p[test_seq.astype(int)] = 0
-            y_prob_[j, :] = p / float(np.sum(p))
-
-        if y_prob is None:
-            y_prob = y_prob_
-            y = y_
+        if self.options['time_loss'] == 'mse':
+            time_pred = 0
         else:
-            y = np.concatenate((y, y_), axis=0)
-            y_prob = np.concatenate((y_prob, y_prob_), axis=0)
+            time_pred = self.predict_time(sess, time, label_t, seq)
 
-        return metrics.portfolio(y_prob, y, k_list=[10, 50, 100]), time_pred
+        if self.node_pred:
+            rnn_args = {self.input_nodes: seq,
+                        self.input_times: time
+                        # self.init_state: np.zeros((2, self.batch_size, self.state_size))
+                        }
+            y_prob_ = sess.run([self.probs], feed_dict=rnn_args)
+            y_prob_ = y_prob_[0]
+            # print(y_prob_.shape, log_lik.shape)
+            for j, p in enumerate(y_prob_):
+                test_seq_len = test_batch[2][j]
+                test_seq = test_batch[0][j][0: int(sum(test_seq_len))]
+                p[test_seq.astype(int)] = 0
+                y_prob_[j, :] = p / float(np.sum(p))
+
+            if y_prob is None:
+                y_prob = y_prob_
+                y = y_
+            else:
+                y = np.concatenate((y, y_), axis=0)
+                y_prob = np.concatenate((y_prob, y_prob_), axis=0)
+            node_score = metrics.portfolio(y_prob, y, k_list=[10, 50, 100])
+        else:
+            node_score = {}
+        return node_score, time_pred
 
     def get_average_score(self, scores):
         df = pd.DataFrame(scores)
