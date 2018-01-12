@@ -11,6 +11,25 @@ def process_timestamps(timestamps):
     return list(np.diff(arr))
 
 
+def write_seen_nodes(data_path, seq_len):
+    seen_nodes = []
+    with open(join(data_path, 'train.txt'), 'r') as read_file:
+        for i, line in enumerate(read_file):
+            query, cascade = line.strip().split(' ', 1)
+            sequence = cascade.split(' ')[::2]
+            seen_nodes.extend(sequence)
+    with open(join(data_path, 'test.txt'), 'r') as read_file:
+        for i, line in enumerate(read_file):
+            query, cascade = line.strip().split(' ', 1)
+            sequence = cascade.split(' ')[::2]
+            seen_nodes.extend(sequence)
+    seen_nodes = set(seen_nodes)
+    with open(join(data_path, 'seen_nodes.txt'), 'w+') as write_file:
+        for node in seen_nodes:
+            write_file.write(node + '\n')
+    print(len(seen_nodes))
+
+
 def load_graph(data_path):
     node_file = join(data_path, 'seen_nodes.txt')
     with open(node_file, 'r') as f:
