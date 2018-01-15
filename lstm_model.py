@@ -7,7 +7,7 @@ import pandas as pd
 
 
 class LSTMModel:
-    def __init__(self, state_size, vertex_size, batch_size, seq_len, learning_rate, max_diff, loss_type='mse',
+    def __init__(self, state_size, vertex_size, batch_size, seq_len ,win_len, learning_rate, max_diff, loss_type='mse',
                  n_samples=20, use_att=False, node_pred=False):
         self.batch_size = batch_size
         self.seq_len = seq_len
@@ -22,7 +22,7 @@ class LSTMModel:
         self.use_att = False
         if use_att:
             self.use_att = True
-            self.attention_size = self.seq_len
+            self.attention_size = win_len
 
     def init_variables(self):
         self.input_nodes = tf.placeholder(shape=[None, None], dtype=tf.float32)
@@ -81,7 +81,7 @@ class LSTMModel:
         '''self.time_cost = tf.constant(0.0)
         self.node_cost = tf.constant(0.0)
         self.cost = self.time_cost + self.node_cost'''
-        # self.node_cost = tf.constant(0.0)
+        self.node_cost = tf.constant(0.0) # self.calc_node_loss() +
         self.cost = self.calc_node_loss() + self.loss_trade_off * self.calc_time_loss(self.output_time)
         self.optimizer = tf.train.AdamOptimizer(learning_rate=self.learning_rate).minimize(self.cost)
 

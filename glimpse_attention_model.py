@@ -307,7 +307,7 @@ class GlimpseNet:
         self.init_variables()
 
     def init_variables(self):
-        self.w_g0 = weight_variable((self.sensor_size, self.hg_size))
+        self.w_g0 = weight_variable((self.state_size, self.hg_size))
         self.b_g0 = bias_variable((self.hg_size,))
         self.w_l0 = weight_variable((self.loc_dim, self.hl_size))
         self.b_l0 = bias_variable((self.hl_size,))
@@ -315,6 +315,11 @@ class GlimpseNet:
         self.b_g1 = bias_variable((self.g_size,))
         self.w_l1 = weight_variable((self.hl_size, self.g_size))
         self.b_l1 = weight_variable((self.g_size,))
+        self.encoder_cell = tf.nn.rnn_cell.BasicLSTMCell(self.state_size)
+
+        self.W_omega = tf.Variable(tf.random_normal([self.state_size, self.win_len], stddev=0.1))
+        self.b_omega = tf.Variable(tf.random_normal([self.win_len], stddev=0.1))
+        self.u_omega = tf.Variable(tf.random_normal([self.win_len], stddev=0.1))
 
     def get_glimpse(self, loc):
         out_node = []
@@ -347,16 +352,27 @@ class GlimpseNet:
         out_time = tf.reshape(out_time, [tf.shape(loc)[0], -1])
         return out_node, out_time
 
+    def attention(self, states):
+            v = tf.tanh(tf.tensordot(states, self.W_omega, axes=1) + self.b_omega)
+            vu = tf.tensordot(v, self.u_omega, axes=1)
+            alphas = tf.nn.softmax(vu)
+            output = tf.reduce_sum(states * tf.expand_dims(alphas, -1), 1)
+            return output
+
     def __call__(self, loc):
         glimpse_input_node, glimpse_input_time = self.get_glimpse(loc)
         # self.emb = tf.get_variable('emb', initializer=tf.truncated_normal(shape=[self.vertex_size, self.emb_size]))
         self.rnn_inputs_nodes = tf.nn.embedding_lookup(self.emb, tf.cast(glimpse_input_node, dtype=tf.int32))
         self.rnn_inputs_times = tf.expand_dims(glimpse_input_time, axis=-1)
         self.comb_glimpse_inputs = tf.concat([self.rnn_inputs_nodes, self.rnn_inputs_times], axis=2)
-        self.comb_glimpse_inputs = tf.reshape(self.comb_glimpse_inputs, [self.batch_size, -1])
+        # self.comb_glimpse_inputs = tf.reshape(self.comb_glimpse_inputs, [self.batch_size, -1])
         '''glimpse_input = tf.reshape(glimpse_input,
                                    (tf.shape(loc)[0], self.sensor_size))'''
-        g = tf.nn.relu(tf.nn.xw_plus_b(self.comb_glimpse_inputs, self.w_g0, self.b_g0))
+
+        encoder_outputs, self.encoder_state = tf.nn.dynamic_rnn(self.encoder_cell, self.comb_glimpse_inputs,
+                                                                     dtype=tf.float32)
+        self.encoder_output = self.attention(encoder_outputs)
+        g = tf.nn.relu(tf.nn.xw_plus_b(self.encoder_output, self.w_g0, self.b_g0))
         g = tf.nn.xw_plus_b(g, self.w_g1, self.b_g1)
         l = tf.nn.relu(tf.nn.xw_plus_b(tf.cast(loc, tf.float32), self.w_l0, self.b_l0))
         l = tf.nn.xw_plus_b(l, self.w_l1, self.b_l1)

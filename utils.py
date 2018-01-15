@@ -8,10 +8,15 @@ from os.path import join, isfile
 
 def process_timestamps(timestamps):
     arr = np.asarray(timestamps)
-    return list(np.diff(arr))
+    diff = list(np.diff(arr))
 
+    for i in range(0, len(diff)-1):
+        if diff[i] == diff[i+1]:
+            for j in range(0, len(diff)):
+                diff[j] += 1
+    return diff
 
-def write_seen_nodes(data_path, seq_len):
+'''def write_seen_nodes(data_path, seq_len):
     seen_nodes = []
     with open(join(data_path, 'train.txt'), 'r') as read_file:
         for i, line in enumerate(read_file):
@@ -27,7 +32,7 @@ def write_seen_nodes(data_path, seq_len):
     with open(join(data_path, 'seen_nodes.txt'), 'w+') as write_file:
         for node in seen_nodes:
             write_file.write(node + '\n')
-    print(len(seen_nodes))
+    print(len(seen_nodes))'''
 
 
 def load_graph(data_path):
@@ -78,9 +83,13 @@ def load_instances(data_path, file_type, node_index, seq_len, limit, ratio=1.0, 
                 if seq_len is not None:
                     cascade_nodes = cascade_nodes[:seq_len+1]
                     cascade_times = cascade_times[:seq_len+2]
+                    if len(cascade_times) == len(cascade_nodes):
+                        cascade_nodes.pop()
                     cascade_times = process_timestamps(cascade_times)
                     assert len(cascade_nodes) == len(cascade_times)
                 cascade_nodes = [node_index[x] for x in cascade_nodes]
+                if not cascade_nodes or not cascade_times:
+                    continue
                 max_diff = max(max_diff, max(cascade_times))
                 ins = process_cascade(cascade_nodes, cascade_times, testing)
                 instances.extend(ins)
@@ -88,8 +97,7 @@ def load_instances(data_path, file_type, node_index, seq_len, limit, ratio=1.0, 
                     break
         # pickle.dump(instances, open(pkl_path, 'wb+'))
     total_samples = len(instances)
-    indices = np.random.choice(total_samples, int(
-        total_samples * ratio), replace=False)
+    indices = np.random.choice(total_samples, int(total_samples * ratio), replace=False)
     sampled_instances = [instances[i] for i in indices]
     return sampled_instances, max_diff
 

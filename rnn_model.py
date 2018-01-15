@@ -71,8 +71,8 @@ class RNNModel:
             self.last_state = self.attention(self.states)
         else:
             self.last_state = self.states[:, -1, :]
-        self.node_cost = tf.constant(0.0)
-        self.cost = self.loss_trade_off * self.calc_time_loss(self.output_time)
+        # self.node_cost = tf.constant(0.0) #self.calc_node_loss() +
+        self.cost = self.calc_node_loss() + self.loss_trade_off * self.calc_time_loss(self.output_time)
         self.optimizer = tf.train.AdamOptimizer(learning_rate=self.learning_rate).minimize(self.cost)
 
     def calc_node_loss(self):

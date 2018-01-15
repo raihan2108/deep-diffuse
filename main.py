@@ -27,14 +27,17 @@ if __name__ == '__main__':
     if options['cell_type'] == 'rnn':
         print('running rnn model')
         print('using attention:' + str(options['use_attention']))
+        print('node pred:' + str(options['node_pred']))
         rnn_ins = RNNModel(options['state_size'], options['node_size'], options['batch_size'], options['seq_len'],
-                           options['learning_rate'], max_diff_train, loss_type=options['time_loss'], use_att=options['use_attention'])
+                           options['learning_rate'], max_diff_train, loss_type=options['time_loss'],
+                           use_att=options['use_attention'],
+                           node_pred=options['node_pred'])
         rnn_ins.run_model(train_loader, test_loader, options)
     elif options['cell_type'] == 'lstm':
         print('running lstm model')
         print('using attention:' + str(options['use_attention']))
         print('node pred:' + str(options['node_pred']))
-        lstm_ins = LSTMModel(options['state_size'], options['node_size'], options['batch_size'], options['seq_len'],
+        lstm_ins = LSTMModel(options['state_size'], options['node_size'], options['batch_size'], options['seq_len'], options['win_len'],
                            options['learning_rate'], max_diff_train, loss_type=options['time_loss'],
                              use_att=options['use_attention'],
                              node_pred=options['node_pred'])
