@@ -8,6 +8,7 @@ import data_utils as du
 # from vanilla_rnn import VanillaRNN
 from rnn_model import RNNModel
 from lstm_model import LSTMModel
+from deep_cas_model import DeepCasModel
 from glimpse_attention_model import GlimpseAttentionModel
 
 if __name__ == '__main__':
@@ -17,7 +18,7 @@ if __name__ == '__main__':
     node_index = utils.load_graph(data_path)
     options['node_size'] = len(node_index)
     # print(nx.info(G))
-    train_instances, max_diff_train = utils.load_instances(data_path, 'train', node_index, options['seq_len'], limit=-1)
+    train_instances, max_diff_train = utils.load_instances(data_path, 'train', node_index, options['seq_len'], limit=-1, ratio=0.7)
     test_instances, max_diff_test = utils.load_instances(data_path, 'test', node_index, options['seq_len'], limit=-1)
     options['max_diff'] = max_diff_train
     print(len(train_instances), len(test_instances))
@@ -47,3 +48,13 @@ if __name__ == '__main__':
         print('using attention:' + str(options['use_attention']))
         glimpse_ins = GlimpseAttentionModel(options, options['use_attention'])
         glimpse_ins.run_model(train_loader, test_loader, options)
+
+    elif options['cell_type'] == 'gru':
+        print('running deep cas model')
+        print('using attention:' + str(options['use_attention']))
+        print('node pred:' + str(options['node_pred']))
+        rnn_ins = DeepCasModel(options, options['state_size'], options['node_size'], options['batch_size'], options['seq_len'],
+                           options['learning_rate'], max_diff_train, loss_type=options['time_loss'],
+                           use_att=options['use_attention'],
+                           node_pred=options['node_pred'])
+        rnn_ins.run_model(train_loader, test_loader, options)

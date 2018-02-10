@@ -20,7 +20,7 @@ def load_graph(data_path):
     node_index = {v: i for i, v in enumerate(seen_nodes)}
 
     # loads graph
-    '''graph_file = join(data_path, 'graph.txt')
+    graph_file = join(data_path, 'graph.txt')
     pkl_file = join(data_path, 'graph.pkl')
 
     if isfile(pkl_file):
@@ -31,16 +31,16 @@ def load_graph(data_path):
         n_nodes = len(node_index)
         G.add_nodes_from(range(n_nodes))
         with open(graph_file, 'r') as f:
-            next(f)
+            # next(f)
             for line in f:
                 u, v = map(int, line.strip().split())
                 if (u in node_index) and (v in node_index):
                     u = node_index[u]
                     v = node_index[v]
                     G.add_edge(u, v)
-        pickle.dump(G, open(pkl_file, 'wb+'))'''
+        # pickle.dump(G, open(pkl_file, 'wb+'))
 
-    return node_index
+    return node_index, G
 
 
 def load_instances(data_path, file_type, node_index, seq_len, limit, ratio=1.0):

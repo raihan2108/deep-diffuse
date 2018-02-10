@@ -7,14 +7,14 @@ from os.path import join, isfile
 
 
 def process_timestamps(timestamps):
-    arr = np.asarray(timestamps)
+    arr = np.asarray(timestamps, dtype=np.float)
     diff = list(np.diff(arr))
 
     for i in range(0, len(diff)-1):
         if diff[i] == diff[i+1]:
             for j in range(0, len(diff)):
                 diff[j] += 1
-    return diff
+    return [x / 3600.0 for x in diff]
 
 '''def write_seen_nodes(data_path, seq_len):
     seen_nodes = []
@@ -186,7 +186,7 @@ def prepare_minibatch(tuples, inference=False, options=None):
         seqs_matrix[: lengths[i], i] = seq
     seqs_matrix = np.transpose(seqs_matrix)
 
-    times_matrix = np.zeros((options['seq_len'], n_samples)).astype('int32')
+    times_matrix = np.zeros((options['seq_len'], n_samples)).astype('float32')
     for i, time in enumerate(times):
         times_matrix[: lengths[i], i] = time
     times_matrix = np.transpose(times_matrix) 
@@ -208,7 +208,7 @@ def prepare_minibatch(tuples, inference=False, options=None):
         labels_n = [t['label_n'] for t in tuples]
         labels_t = [t['label_t'] for t in tuples]
         labels_vector_n = np.array(labels_n).astype('int32')
-        labels_vector_t = np.array(labels_t).astype('int32')
+        labels_vector_t = np.array(labels_t).astype('float32')
     else:
         labels_vector_t = None
         labels_vector_n = None

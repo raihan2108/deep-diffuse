@@ -15,7 +15,7 @@ class LSTMModel:
         self.learning_rate = learning_rate
         self.vertex_size = vertex_size
         self.loss_type = loss_type
-        self.loss_trade_off = 0.01
+        self.loss_trade_off = 0.00
         self.max_diff = max_diff
         self.node_pred = node_pred
         self.n_samples = n_samples
@@ -67,7 +67,7 @@ class LSTMModel:
         vu = tf.tensordot(v, self.u_omega, axes=1)
         alphas = tf.nn.softmax(vu)
         output = tf.reduce_sum(states * tf.expand_dims(alphas, -1), 1)
-        return output
+        return output, alphas# tf.random_uniform(shape=tf.shape(alphas))
 
     def build_graph(self):
         self.init_state = tf.placeholder(shape=[2, None, self.state_size], dtype=tf.float32, name='initial_state')
@@ -75,12 +75,13 @@ class LSTMModel:
                          initializer=self.init_state)
         self.states = tf.transpose(states, [1, 2, 0, 3])[0]
         if self.use_att:
-            self.last_state = self.attention(self.states)
+            self.last_state, self.alphas = self.attention(self.states)
         else:
             self.last_state = self.states[:, -1, :]
         '''self.time_cost = tf.constant(0.0)
         self.node_cost = tf.constant(0.0)
         self.cost = self.time_cost + self.node_cost'''
+
         self.node_cost = tf.constant(0.0) # self.calc_node_loss() +
         self.cost = self.calc_node_loss() + self.loss_trade_off * self.calc_time_loss(self.output_time)
         self.optimizer = tf.train.AdamOptimizer(learning_rate=self.learning_rate).minimize(self.cost)
@@ -119,13 +120,13 @@ class LSTMModel:
         all_log_lik = np.zeros((self.batch_size, self.n_samples), dtype=np.float)
         init_state = np.zeros((2, self.batch_size, self.state_size), dtype=np.float)
         for i in range(0, self.n_samples):
-            samp = np.random.randint(low=0, high=self.max_diff, size=self.batch_size)
+            samp = np.random.randint(low=0, high=100, size=self.batch_size)
             rnn_args = {self.output_time: samp, self.input_nodes: node_seq, self.input_times: time_seq,
                         self.init_state: init_state}
             log_lik, hist_in, curr_in = sess.run([self.loglik, self.hist_influence, self.curr_influence], feed_dict=rnn_args)
-            # log_lik = np.exp(log_lik[0])
+            a_log_lik = np.exp(log_lik)
             # print(log_lik.shape, hist_in.shape, curr_in.shape)
-            all_log_lik[:, i] = np.multiply(log_lik, samp)
+            all_log_lik[:, i] = np.multiply(a_log_lik, samp)
         pred_time = np.mean(all_log_lik, axis=1)
         '''for i in range(0, self.seq_len):
             current_input = time_seq[:, i]
@@ -134,7 +135,8 @@ class LSTMModel:
             log_lik = np.exp(log_lik[0])
             all_log_lik[:, i] = log_lik
         pred_time = np.mean(all_log_lik, axis=1)'''
-        return sqrt(mean_squared_error(time_label, pred_time)) / self.batch_size
+        return sqrt(mean_squared_error(time_label, pred_time))
+
 
     def run_model(self, train_it, test_it, options):
         tf.reset_default_graph()
@@ -163,6 +165,7 @@ class LSTMModel:
                     _, cost, node_cost, time_cost, last_state = \
                         sess.run([self.optimizer, self.cost, self.node_cost, self.time_cost, self.last_state],
                                  feed_dict=rnn_args)
+
                     '''_ , cost, node_cost, time_cost, states = sess.run([self.optimizer,
                     self.cost, self.node_cost, self.time_cost, self.states], feed_dict=rnn_args)
                     print(states.shape)'''
@@ -254,4 +257,4 @@ class LSTMModel:
             else:
                 y = np.concatenate((y, y_), axis=0)
                 y_prob = np.concatenate((y_prob, y_prob_), axis=0)'''
-        return self.get_average_score(node_scores), np.mean(np.asarray(time_scores)) // test_batch_size
+        return self.get_average_score(node_scores), np.mean(np.asarray(time_scores))

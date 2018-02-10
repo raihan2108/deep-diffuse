@@ -53,6 +53,7 @@ class GlimpseAttentionModel:
             self.attention_size = self.win_len'''
 
     def init_variables(self):
+        self.epilson = tf.constant(1e-3, tf.float32)
         self.input_nodes = tf.placeholder(shape=[None, None], dtype=tf.float32)
         self.input_times = tf.placeholder(shape=[None, None], dtype=tf.float32)
 
@@ -100,8 +101,9 @@ class GlimpseAttentionModel:
             self.output = self.attention(self.outputs)
         else:
             self.output = self.outputs[-1]'''
-
-        self.cost = self.calc_node_loss() + self.loss_trade_off * self.calc_time_loss(self.output_time)
+        # self.node_cost = tf.constant(0.0) # self.calc_node_loss() +
+        self.time_cost = tf.constant(0.0)
+        self.cost = self.calc_node_loss() # + self.loss_trade_off * self.calc_time_loss(self.output_time)
         self.optimizer = tf.train.AdamOptimizer(learning_rate=self.learning_rate).minimize(self.cost)
         '''grads, tvars = zip(*self.optimizer.compute_gradients(self.cost))
         capped_gvs = tf.clip_by_global_norm(grads, self.clipping_val)[0]
@@ -128,6 +130,9 @@ class GlimpseAttentionModel:
     def calc_time_loss(self, current_time):
         time_loss = 0.0
         if self.loss_type == "intensity":
+            self.wt = tf.cond(tf.less(tf.reshape(tf.abs(self.wt), []), self.epilson), lambda: tf.sign(self.wt) * self.epilson,
+                         lambda: self.wt)
+
             state_reshaped = tf.reshape(self.outputs, [-1, self.state_size])
             self.hist_influence = tf.reshape(tf.matmul(state_reshaped, self.Vt), [-1])
             self.curr_influence = self.wt * current_time
@@ -190,12 +195,12 @@ class GlimpseAttentionModel:
     def predict_time(self, sess, time_seq, time_label, node_seq):
         all_log_lik = np.zeros((self.batch_size, self.n_samples), dtype=np.float)
         for i in range(0, self.n_samples):
-            samp = np.random.randint(low=0, high=self.max_diff, size=self.batch_size)
+            samp = np.random.uniform(low=0, high=100, size=self.batch_size)
             rnn_args = {self.output_time: samp, self.input_nodes: node_seq, self.input_times: time_seq}
-            log_lik, hist_in, curr_in = sess.run([self.loglik, self.hist_influence, self.curr_influence], feed_dict=rnn_args)
-            # log_lik = np.exp(log_lik[0])
+            log_lik, hist_in, curr_in, wt, bt = sess.run([self.loglik, self.hist_influence, self.curr_influence, self.wt, self.bt], feed_dict=rnn_args)
+            a_log_lik = np.exp(log_lik)
             # print(log_lik.shape, hist_in.shape, curr_in.shape)
-            all_log_lik[:, i] = np.multiply(log_lik, samp)
+            all_log_lik[:, i] = np.multiply(a_log_lik, samp)
         pred_time = np.mean(all_log_lik, axis=1)
         '''for i in range(0, self.seq_len):
             current_input = time_seq[:, i]
@@ -204,7 +209,7 @@ class GlimpseAttentionModel:
             log_lik = np.exp(log_lik[0])
             all_log_lik[:, i] = log_lik
         pred_time = np.mean(all_log_lik, axis=1)'''
-        return sqrt(mean_squared_error(time_label, pred_time)) / self.batch_size
+        return sqrt(mean_squared_error(time_label, pred_time))
 
     def evaluate_batch(self, test_batch, sess):
         y = None
@@ -281,7 +286,7 @@ class GlimpseAttentionModel:
             else:
                 y = np.concatenate((y, y_), axis=0)
                 y_prob = np.concatenate((y_prob, y_prob_), axis=0)'''
-        return self.get_average_score(node_scores), np.mean(np.asarray(time_scores)) // test_batch_size
+        return self.get_average_score(node_scores), np.mean(np.asarray(time_scores))
         # return metrics.portfolio(y_prob, y, k_list=[10, 50, 100])
 
 
