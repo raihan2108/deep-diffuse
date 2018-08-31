@@ -5,4 +5,5 @@ The twitter dataset is given. For complete version of the datasets please see th
 
 If you use the code please cite:
 *DeepDiffuse*:Predicting the ‘Who’ and ‘When’ in Cascades
+
 ICDM 2018
