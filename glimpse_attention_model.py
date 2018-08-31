@@ -6,7 +6,8 @@ from tensorflow.contrib import legacy_seq2seq
 # from tensorflow.contrib import seq2seq
 from sklearn.metrics import mean_squared_error
 distributions = tf.contrib.distributions
-
+import logging
+import metrics
 
 
 def weight_variable(shape):
@@ -19,9 +20,18 @@ def bias_variable(shape):
   return tf.Variable(initial)
 
 
+def loglikelihood(mean_arr, sampled_arr, sigma):
+  mu = tf.stack(mean_arr)  # mu = [timesteps, batch_sz, loc_dim]
+  sampled = tf.stack(sampled_arr)  # same shape as mu
+  gaussian = distributions.Normal(mu, sigma)
+  logll = gaussian.log_pdf(sampled)  # [timesteps, batch_sz, loc_dim]
+  logll = tf.reduce_sum(logll, 2)
+  logll = tf.transpose(logll)  # [batch_sz, timesteps]
+
+  return logll
 
 class GlimpseAttentionModel:
-    def __init__(self, options, use_att):
+    def __init__(self, options, use_att, n_train):
         self.batch_size = options['batch_size']
         self.seq_len = options['seq_len']
         self.state_size = options['state_size']
@@ -31,23 +41,28 @@ class GlimpseAttentionModel:
         self.win_len = options['win_len']
         self.emb_size = options['embedding_size']
         self.n_samples = options['n_samples']
-        self.loss_trade_off = 0.01
+        self.loss_trade_off = 0.00
         self.node_pred = options['node_pred']
         self.clipping_val = options['clipping_val']
         self.options = options
         self.use_att = False
         self.max_diff = options['max_diff']
+        self.min_lr = options['min_lr']
+        self.training_steps_per_epoch = n_train // self.batch_size
+        self.keep_prob = 0.3
+        self.log = logging.getLogger(options['cell_type'] + '.' + __name__)
+        self.log.setLevel(logging.DEBUG)
         '''if use_att:
             self.use_att = True
             self.attention_size = self.win_len'''
 
     def init_variables(self):
-        self.epilson = tf.constant(1e-3, tf.float32)
         self.input_nodes = tf.placeholder(shape=[None, None], dtype=tf.float32)
         self.input_times = tf.placeholder(shape=[None, None], dtype=tf.float32)
 
         self.output_node = tf.placeholder(shape=[None], dtype=tf.float32)
         self.output_time = tf.placeholder(shape=[None], dtype=tf.float32)
+        # self.topo_mask = tf.placeholder(shape=[None, None], dtype=tf.float32)
 
         self.emb = tf.get_variable('emb', initializer=tf.truncated_normal(shape=[self.vertex_size, self.emb_size]))
         self.Vn = tf.get_variable('Vn', initializer=tf.truncated_normal(shape=[self.state_size, self.vertex_size]))
@@ -68,7 +83,7 @@ class GlimpseAttentionModel:
         sampled_loc_arr = []
 
         # with tf.variable_scope('glimpse_net'):
-        gl = GlimpseNet(self.options, self.input_nodes, self.input_times, self.emb)
+        gl = GlimpseNet(self.options, self.input_nodes, self.input_times, self.emb, self.keep_prob)
         # with tf.variable_scope('loc_net'):
         loc_net = LocNet(self.options)
 
@@ -82,12 +97,45 @@ class GlimpseAttentionModel:
         init_loc = tf.random_uniform((self.batch_size, 1), maxval=self.seq_len-self.win_len, minval=0, dtype=tf.int32)
         init_glimpse = gl(init_loc)
         lstm_cell = tf.nn.rnn_cell.LSTMCell(self.state_size, activation=tf.nn.tanh, state_is_tuple=False)
+        lstm_cell = tf.contrib.rnn.DropoutWrapper(lstm_cell, input_keep_prob=self.keep_prob,
+                                                 output_keep_prob=self.keep_prob)
         self.init_state = lstm_cell.zero_state(self.batch_size, tf.float32)
         inputs = [init_glimpse]
+        # inputs.extend([0] * (self.options['num_glimpse']))
         self.outputs, _ = legacy_seq2seq.rnn_decoder(inputs, self.init_state, lstm_cell, loop_function=get_next_input)
+        '''if self.use_att:
+            self.output = self.attention(self.outputs)
+        else:
+            self.output = self.outputs[-1]'''
+        global_step = tf.get_variable(
+            'global_step', [], initializer=tf.constant_initializer(0), trainable=False)
+        starter_learning_rate = self.learning_rate
+        # decay per training epoch
+        learning_rate = tf.train.exponential_decay(
+            starter_learning_rate,
+            global_step,
+            self.training_steps_per_epoch,
+            0.97,
+            staircase=True)
+        learning_rate = tf.maximum(learning_rate, self.min_lr)
+        self.time_cost = tf.constant(0.0)
 
         self.cost = self.calc_node_loss() + self.loss_trade_off * self.calc_time_loss(self.output_time)
-        self.optimizer = tf.train.AdamOptimizer(learning_rate=self.learning_rate).minimize(self.cost)
+        tv = tf.trainable_variables()
+        self.reg_loss = tf.reduce_mean([tf.nn.l2_loss(v) for v in tv])
+        self.cost += tf.constant(0.0005) * self.reg_loss
+
+        self.optimizer = tf.train.AdamOptimizer(learning_rate=learning_rate).minimize(self.cost)
+        '''grads, tvars = zip(*self.optimizer.compute_gradients(self.cost))
+        capped_gvs = tf.clip_by_global_norm(grads, self.clipping_val)[0]
+        self.optimizer = self.optimizer.apply_gradients(zip(capped_gvs, tvars))'''
+
+    '''def attention(self, states):
+        v = tf.tanh(tf.tensordot(states, self.W_omega, axes=1) + self.b_omega)
+        vu = tf.tensordot(v, self.u_omega, axes=1)
+        alphas = tf.nn.softmax(vu)
+        output = tf.reduce_sum(states * tf.expand_dims(alphas, -1), 1)
+        return output'''
 
     def calc_node_loss(self):
         state_reshaped = tf.reshape(self.outputs, [-1, self.state_size])
@@ -103,9 +151,6 @@ class GlimpseAttentionModel:
     def calc_time_loss(self, current_time):
         time_loss = 0.0
         if self.loss_type == "intensity":
-            self.wt = tf.cond(tf.less(tf.reshape(tf.abs(self.wt), []), self.epilson), lambda: tf.sign(self.wt) * self.epilson,
-                         lambda: self.wt)
-
             state_reshaped = tf.reshape(self.outputs, [-1, self.state_size])
             self.hist_influence = tf.reshape(tf.matmul(state_reshaped, self.Vt), [-1])
             self.curr_influence = self.wt * current_time
@@ -129,6 +174,8 @@ class GlimpseAttentionModel:
         num_batches = len(train_it)
         with tf.Session() as sess:
             tf.global_variables_initializer().run(session=sess)
+            best_scores = {'map@10': 0.0, 'map@50': 0.0, 'map@100': 0.0,
+                           'hits@10': 0.0, 'hits@50': 0.0, 'hits@100': 0.0, 'time_mse': float('inf')}
             for e in range(1, options['epochs'] + 1):
                 global_cost = 0.
                 global_time_cost = 0.
@@ -157,13 +204,133 @@ class GlimpseAttentionModel:
                     print(output[0].shape)'''
 
                 if e % options['disp_freq'] == 0:
-                    print('[%d/%d] epoch: %d, batch: %d, train loss: %.4f, node loss: %.4f, time loss: %.4f' % (
+                    self.log.info('[%d/%d] epoch: %d, batch: %d, train loss: %.4f, node loss: %.4f, time loss: %.4f' % (
                     e * num_batches + b, options['epochs'] * num_batches, e, b, global_cost, global_node_cost,
                     global_time_cost))
 
+                if e % options['test_freq'] == 0:
+                    scores = self.evaluate_model(sess, test_it)
+                    # print(scores)
+                    for k in best_scores.keys():
+                        if k != 'time_mse':
+                            if scores[k] > best_scores[k]:
+                                best_scores[k] = scores[k]
+                        else:
+                            if scores[k] < best_scores[k]:
+                                best_scores[k] = scores[k]
+                    '''if scores[1] < best_scores['time_mse']:
+                        best_scores['time_mse'] = scores[1]'''
+                    # log.info('time prediction:' + str(scores[1]))
+                    self.log.info(best_scores)
+                    self.log.info(scores)
+
+    def predict_time(self, sess, time_seq, time_label, node_seq):
+        all_log_lik = np.zeros((self.batch_size, self.n_samples), dtype=np.float)
+        for i in range(0, self.n_samples):
+            samp = np.random.randint(low=0, high=self.max_diff, size=self.batch_size)
+            rnn_args = {self.output_time: samp, self.input_nodes: node_seq, self.input_times: time_seq}
+            log_lik, hist_in, curr_in = sess.run([self.loglik, self.hist_influence, self.curr_influence], feed_dict=rnn_args)
+            # log_lik = np.exp(log_lik[0])
+            # print(log_lik.shape, hist_in.shape, curr_in.shape)
+            all_log_lik[:, i] = np.multiply(log_lik, samp)
+        pred_time = np.mean(all_log_lik, axis=1)
+        '''for i in range(0, self.seq_len):
+            current_input = time_seq[:, i]
+            rnn_args = {self.output_time: time_label, self.input_nodes: node_seq}
+            log_lik = sess.run([self.loglik], feed_dict=rnn_args)
+            log_lik = np.exp(log_lik[0])
+            all_log_lik[:, i] = log_lik
+        pred_time = np.mean(all_log_lik, axis=1)'''
+        return sqrt(mean_squared_error(time_label, pred_time)) / self.batch_size
+
+    def evaluate_batch(self, test_batch, sess):
+        y = None
+        y_prob = None
+        seq, time, seq_mask, label_n, label_t = test_batch
+        y_ = label_n
+        if self.options['time_loss'] == 'mse':
+            time_pred = 0
+        else:
+            time_pred = self.predict_time(sess, time, label_t, seq)
+
+        if self.node_pred:
+            rnn_args = {self.input_nodes: seq,
+                        self.input_times: time
+                        # self.init_state: np.zeros((2, self.batch_size, self.state_size))
+                        }
+            y_prob_ = sess.run([self.probs], feed_dict=rnn_args)
+            y_prob_ = y_prob_[0]
+            # print(y_prob_.shape, log_lik.shape)
+            for j, p in enumerate(y_prob_):
+                test_seq_len = test_batch[2][j]
+                test_seq = test_batch[0][j][0: int(sum(test_seq_len))]
+                p[test_seq.astype(int)] = 0
+                y_prob_[j, :] = p / float(np.sum(p))
+
+            if y_prob is None:
+                y_prob = y_prob_
+                y = y_
+            else:
+                y = np.concatenate((y, y_), axis=0)
+                y_prob = np.concatenate((y_prob, y_prob_), axis=0)
+            node_score = metrics.portfolio(y_prob, y, k_list=[10, 50, 100])
+        else:
+            node_score = {}
+        return node_score, time_pred
+
+    def get_average_score(self, scores):
+        df = pd.DataFrame(scores)
+        return dict(df.mean())
+
+    def evaluate_model(self, sess, test_it):
+        test_batch_size = len(test_it)
+        y = None
+        y_prob = None
+        node_scores = []
+        time_scores = []
+        for i in range(0, test_batch_size):
+            test_batch = test_it()
+            seq, time, seq_mask, label_n, label_t = test_batch
+            if seq.shape[0] < self.batch_size:
+                continue
+            '''else:
+                node_score, time_score = self.evaluate_batch(test_batch, sess)
+                node_scores.append(node_score)
+                time_scores.append(time_score)'''
+            if self.loss_type == 'mse':
+                time_pred = 0.0
+            else:
+                time_pred = self.predict_time(sess, time, label_t, seq)
+            time_scores.append(time_pred)
+            y_ = label_n
+            rnn_args = {
+                        # self.init_state: np.zeros((2, self.batch_size, self.state_size)),
+                        self.input_nodes: seq,
+                        self.input_times: time
+                        }
+            y_prob_ = sess.run([self.probs], feed_dict=rnn_args)
+
+            y_prob_ = y_prob_[0]
+            for j, p in enumerate(y_prob_):
+                test_seq_len = test_batch[3][j]
+                test_seq = test_batch[0][j][0: int(test_seq_len)]
+                assert y_[j] not in test_seq, str(test_seq) + str(y_[j])
+                p[test_seq.astype(int)] = 0.
+                y_prob_[j, :] = p / float(np.sum(p))
+
+            if y_prob is None:
+                y_prob = y_prob_
+                y = y_
+            else:
+                y = np.concatenate((y, y_), axis=0)
+                y_prob = np.concatenate((y_prob, y_prob_), axis=0)
+        scores = metrics.portfolio(y_prob, y, k_list=[10, 50, 100])
+        scores['time_mse'] = np.mean(np.asarray(time_scores)) // test_batch_size
+        return scores
+
 
 class GlimpseNet:
-    def __init__(self, options, input_node_ph, input_time_ph, emb):
+    def __init__(self, options, input_node_ph, input_time_ph, emb, keep_prob):
         self.original_size = options['seq_len']
         self.win_len = options['win_len']
         self.batch_size = options['batch_size']
@@ -173,6 +340,7 @@ class GlimpseNet:
         self.emb_size = options['embedding_size']
         self.sensor_size = self.win_len * (self.emb_size + 1)
         self.emb = emb
+        self.keep_prob = keep_prob
 
         self.hg_size = options['hg_size']
         self.hl_size = options['hl_size']
@@ -192,7 +360,9 @@ class GlimpseNet:
         self.b_g1 = bias_variable((self.g_size,))
         self.w_l1 = weight_variable((self.hl_size, self.g_size))
         self.b_l1 = weight_variable((self.g_size,))
-        self.encoder_cell = tf.nn.rnn_cell.BasicLSTMCell(self.state_size)
+        self.encoder_cell = tf.nn.rnn_cell.LSTMCell(self.state_size)
+        self.encoder_cell = tf.contrib.rnn.DropoutWrapper(self.encoder_cell, input_keep_prob=self.keep_prob,
+                                                 output_keep_prob=self.keep_prob)
 
         self.W_omega = tf.Variable(tf.random_normal([self.state_size, self.win_len], stddev=0.1))
         self.b_omega = tf.Variable(tf.random_normal([self.win_len], stddev=0.1))
@@ -247,7 +417,7 @@ class GlimpseNet:
                                    (tf.shape(loc)[0], self.sensor_size))'''
 
         encoder_outputs, self.encoder_state = tf.nn.dynamic_rnn(self.encoder_cell, self.comb_glimpse_inputs,
-                                                                     dtype=tf.float32)
+                                                                sequence_length=[self.win_len] * self.batch_size, dtype=tf.float32)
         self.encoder_output = self.attention(encoder_outputs)
         g = tf.nn.relu(tf.nn.xw_plus_b(self.encoder_output, self.w_g0, self.b_g0))
         g = tf.nn.xw_plus_b(g, self.w_g1, self.b_g1)
