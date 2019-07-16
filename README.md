@@ -8,7 +8,7 @@ If you use the code please cite:
 
 ```@INPROCEEDINGS{8594943, 
 @inproceedings{islam2018deepdiffuse,
-  title={DeepDiffuse: Predicting the `Who'and `When'in Cascades},
+  title={DeepDiffuse: Predicting the `Who'and `When' in Cascades},
   author={Islam, Mohammad Raihanul and Muthiah, Sathappan and Adhikari, Bijaya and Prakash, B Aditya and Ramakrishnan, Naren},
   booktitle={2018 IEEE International Conference on Data Mining (ICDM)},
   pages={1055--1060},
